@@ -25,10 +25,14 @@ from pydantic import BaseModel
 from typing import List, Optional
 from modules.utility.utility import enrich_participants
 import time
+from modules.socket_manager import sio, socket_app
+import google.api_core.exceptions
 # --- Basic Setup ---
 load_dotenv()
+
 app = FastAPI()
 
+app.mount("/socket.io", socket_app)
 # --- ADD THIS CORS MIDDLEWARE CONFIGURATION ---
 origins = [
     # Add your frontend's URL here.
@@ -413,6 +417,9 @@ async def get_meeting_details(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch meeting details: {e}")
 
+
+
+# This is your updated, non-blocking endpoint
 @app.post("/meetings/process")
 async def process_meeting(
     background_tasks: BackgroundTasks,
@@ -420,102 +427,53 @@ async def process_meeting(
     recording: UploadFile = File(...),
     title: str = Form(...),
     date: str = Form(...),
-    participants: str = Form("[]"), # Default to an empty JSON array string
+    participants: str = Form("[]"),
 ):
-    """
-    Receives meeting data and an audio file, uploads the file to Supabase Storage,
-    and creates a meeting record in the database.
-    """
-
     user_id = current_user.get("id")
-    print(f"Current user ID: {user_id}")
     if not user_id:
-        raise HTTPException(status_code=403, detail="User ID not found in token")
+        raise HTTPException(status_code=403, detail="User ID not found")
 
-    # --- 1. Generate a unique ID and path for the file ---
+    # Read the file contents ONCE in the main endpoint.
+    # While this still takes time, it's unavoidable. The re-upload is what we're moving.
+    contents = await recording.read()
+    
+    # --- 1. (FAST) Generate IDs and parse data ---
     meeting_id = str(uuid.uuid4())
     file_extension = recording.filename.split(".")[-1]
-    file_path = f"{user_id}/{meeting_id}.{file_extension}"
-    print(f"Uploading file to path: {file_path}")
-    try:
-        # --- 2. Upload the audio file to Supabase Storage ---
-        # Read the file content into memory
-        contents = await recording.read()
-        
-        # Upload using the Supabase client
-        supabase.storage.from_("recordings").upload(
-            path=file_path,
-            file=contents,
-            file_options={"content-type": recording.content_type}
-        )
+    participants_list = json.loads(participants)
 
-        # --- 3. Get the public URL of the uploaded file ---
-        file_url_response = supabase.storage.from_("recordings").get_public_url(file_path)
-        recording_url = file_url_response
-
-    except Exception as e:
-        print(f"Error uploading file to Supabase Storage: {e}")
-        raise HTTPException(status_code=500, detail="Failed to upload recording.")
-
-    try:
-        # --- 4. Parse participants from JSON string to a Python list ---
-        participants_list = json.loads(participants)
-        if not isinstance(participants_list, list):
-            raise ValueError("Participants must be a list.")
-            
-    except (json.JSONDecodeError, ValueError) as e:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Invalid format for participants: {e}. Please provide a JSON array of strings."
-        )
-
-    # --- 5. Create the meeting record in the database ---
+    # --- 2. (FAST) Create the initial meeting record in the database ---
+    # The recording_url is left null for now. The status is 'processing'.
     meeting_data = {
         "id": meeting_id,
         "user_id": user_id,
         "title": title,
         "meeting_date": date,
         "participants": participants_list,
-        "recording_url": recording_url,
         "status": "processing",
         "host": current_user.get("email", "Unknown Host"),
     }
-
+    
     try:
         insert_response = supabase.table("meetings").insert(meeting_data).execute()
-
-        if not insert_response.data:
-            # If insert fails, it's good practice to try and delete the orphaned file
-            supabase.storage.from_("recordings").remove([file_path])
-            raise HTTPException(status_code=500, detail="Failed to save meeting details.")
-        
         created_meeting = insert_response.data[0]
-        
-
-    except postgrest.exceptions.APIError as e:
-        # Clean up orphaned file on DB error
-        supabase.storage.from_("recordings").remove([file_path])
-        print(f"Database APIError: {e.message}")
-        raise HTTPException(status_code=500, detail=f"Database error: {e.message}")
     except Exception as e:
-         # Clean up orphaned file on any other error
-        supabase.storage.from_("recordings").remove([file_path])
-        print(f"General error during DB insert: {e}")
-        raise HTTPException(status_code=500, detail="An unexpected error occurred while saving the meeting.")
+        raise HTTPException(status_code=500, detail=f"Failed to create initial meeting record: {e}")
 
-    # --- 6. Start background task to analyze the meeting ---
+    # --- 3. (FAST) Schedule ALL slow tasks to run in the background ---
     background_tasks.add_task(
-        analyze_audio_with_gemini_tools,
-        supabase,
-        meeting_id,
-        contents,
-        recording.content_type
+        process_and_analyze_in_background,
+        supabase=supabase,
+        meeting_id=meeting_id,
+        user_id=user_id,
+        recording_contents=contents,
+        recording_content_type=recording.content_type,
+        file_extension=file_extension
     )
 
-
-            # --- 6. Return the newly created meeting object ---
+    # --- 4. (FAST) Return a response to the frontend immediately! ---
+    print(f"Immediately returning response for meeting {meeting_id}. Processing will continue in background.")
     return {"meeting": created_meeting}
-
 
 
 
@@ -615,6 +573,174 @@ async def delete_meeting(
         raise HTTPException(status_code=500, detail="Failed to delete meeting.")
 
 
+
+# # This new function will run entirely in the background
+# async def process_and_analyze_in_background(
+#     supabase: Client,
+#     meeting_id: str,
+#     user_id: str,
+#     recording_contents: bytes,
+#     recording_content_type: str,
+#     file_extension: str
+# ):
+#     """
+#     Handles the slow parts: uploading to storage and AI analysis.
+#     """
+#     file_path = f"{user_id}/{meeting_id}.{file_extension}"
+    
+#     try:
+#         # --- 1. (BACKGROUND) Upload the audio file to Supabase Storage ---
+#         print(f"Background Task: Uploading file to {file_path}...")
+#         supabase.storage.from_("recordings").upload(
+#             path=file_path,
+#             file=recording_contents,
+#             file_options={"content-type": recording_content_type}
+#         )
+        
+#         # --- 2. (BACKGROUND) Get public URL and update the meeting record ---
+#         recording_url = supabase.storage.from_("recordings").get_public_url(file_path)
+        
+#         supabase.table("meetings").update({
+#             "recording_url": recording_url
+#         }).eq("id", meeting_id).execute()
+
+#         print(f"Background Task: Updated meeting {meeting_id} with recording URL.")
+
+
+#         # Load all API keys from the .env file
+#         api_keys_str = os.getenv("GEMINI_API_KEYS", "")
+#         if not api_keys_str:
+#             raise ValueError("GEMINI_API_KEYS environment variable not set or is empty.")
+        
+#         api_keys = [key.strip() for key in api_keys_str.split(',')]
+
+#         # --- 3. (BACKGROUND) Start the AI analysis ---
+#         # This function is from your modules and does the heavy lifting
+#         await analyze_audio_with_gemini_tools(
+#             supabase,
+#             meeting_id,
+#             recording_contents,
+#             recording_content_type
+#         )
+#                 # After successful analysis, send an update to the user
+#         print(f"Processing complete for meeting {meeting_id}. Emitting update to user {user_id}.")
+#         await sio.emit(
+#             'meeting_processing_complete',
+#             {'meetingId': meeting_id, 'status': 'completed'},
+#             room=user_id  # Send the message only to the specific user
+#         )
+#         # highlight-end
+
+#     except Exception as e:
+#         # If anything fails, update the meeting status to 'failed'
+#         print(f"Background task failed for meeting {meeting_id}: {e}")
+#         supabase.table("meetings").update({"status": "failed"}).eq("id", meeting_id).execute()
+#         await sio.emit(
+#             'meeting_processing_complete',
+#             {'meetingId': meeting_id, 'status': 'failed'},
+#             room=user_id
+#         )
+#         # highlight-end
+
+
+
+
+# This new function will run entirely in the background
+async def process_and_analyze_in_background(
+    supabase: Client,
+    meeting_id: str,
+    user_id: str,
+    recording_contents: bytes,
+    recording_content_type: str,
+    file_extension: str
+):
+    """
+    Handles the slow parts: uploading to storage and AI analysis with API key rotation.
+    """
+    file_path = f"{user_id}/{meeting_id}.{file_extension}"
+    
+    try:
+        # --- 1. (BACKGROUND) Upload the audio file to Supabase Storage ---
+        print(f"Background Task: Uploading file to {file_path}...")
+        supabase.storage.from_("recordings").upload(
+            path=file_path,
+            file=recording_contents,
+            file_options={"content-type": recording_content_type}
+        )
+        
+        # --- 2. (BACKGROUND) Get public URL and update the meeting record ---
+        recording_url = supabase.storage.from_("recordings").get_public_url(file_path)
+        
+        supabase.table("meetings").update({
+            "recording_url": recording_url
+        }).eq("id", meeting_id).execute()
+
+        print(f"Background Task: Updated meeting {meeting_id} with recording URL.")
+
+        # --- 3. (BACKGROUND) Start the AI analysis with retry logic ---
+        
+        # Load all API keys from the .env file
+        api_keys_str = os.getenv("GEMINI_API_KEYS", "")
+        if not api_keys_str:
+            raise ValueError("GEMINI_API_KEYS environment variable not set or is empty.")
+        
+        api_keys = [key.strip() for key in api_keys_str.split(',')]
+        
+        analysis_successful = False
+        last_error = None
+
+        # Loop through each key and try to perform the analysis
+        for key in api_keys:
+            try:
+                print(f"Attempting analysis for meeting {meeting_id} with a new API key...")
+                # Pass the key to the analysis function
+                await analyze_audio_with_gemini_tools(
+                    supabase,
+                    meeting_id,
+                    recording_contents,
+                    recording_content_type,
+                    api_key=key  # Pass the current key from the loop
+                )
+                analysis_successful = True
+                print(f"Analysis successful for meeting {meeting_id}!")
+                break # Exit the loop on success
+            
+            # Catch specific errors like permission denied or resource exhausted
+            except (google.api_core.exceptions.PermissionDenied, google.api_core.exceptions.ResourceExhausted) as e:
+                print(f"API key ending in '...{key[-4:]}' failed. Reason: {type(e).__name__}. Trying next key...")
+                last_error = e
+                continue # Move to the next key
+            except Exception as e:
+                # Catch any other unexpected error during analysis
+                print(f"An unexpected error occurred during analysis with key '...{key[-4:]}': {e}")
+                last_error = e
+                # Depending on the error, you might want to retry or just fail
+                # For this example, we'll try the next key
+                continue
+
+        # If the loop finishes and analysis was not successful, it means all keys failed.
+        if not analysis_successful:
+            print("All API keys failed. Marking meeting as failed.")
+            # We re-raise the last known error to be caught by the outer exception handler
+            raise Exception(f"All Gemini API keys failed. Last error: {last_error}") from last_error
+
+        # After successful analysis, send an update to the user
+        print(f"Processing complete for meeting {meeting_id}. Emitting update to user {user_id}.")
+        await sio.emit(
+            'meeting_processing_complete',
+            {'meetingId': meeting_id, 'status': 'completed'},
+            room=user_id
+        )
+
+    except Exception as e:
+        # If anything fails (upload, DB update, or all API keys failed), update the status
+        print(f"Background task failed for meeting {meeting_id}: {e}")
+        supabase.table("meetings").update({"status": "failed"}).eq("id", meeting_id).execute()
+        await sio.emit(
+            'meeting_processing_complete',
+            {'meetingId': meeting_id, 'status': 'failed'},
+            room=user_id
+        )
 
 
 if __name__ == "__main__":

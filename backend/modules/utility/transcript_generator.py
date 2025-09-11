@@ -18,13 +18,10 @@ load_dotenv()
 # ... other imports
 
 # --- Configuration ---
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+# GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 GEMINI_FILE_UPLOAD_API_URL = "https://generativelanguage.googleapis.com/upload/v1beta/files" # Note: No /upload/ prefix
 MODEL_NAME = os.getenv("MODEL_NAME", "gemini-1.5-flash")
 api_endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_NAME}:generateContent"
-
-
-
 
 
 
@@ -32,7 +29,8 @@ async def analyze_audio_with_gemini_tools(
     supabase: Client,
     meeting_id: str,
     audio_content: bytes,
-    content_type: str
+    content_type: str,
+    api_key: str
 ):
     """
     Analyzes audio content using your FileUploader class.
@@ -41,7 +39,7 @@ async def analyze_audio_with_gemini_tools(
     try:
 
         # --- Step 1: Upload the file using your class ---
-        uploader = FileUploader(GEMINI_FILE_UPLOAD_API_URL, GOOGLE_API_KEY)
+        uploader = FileUploader(GEMINI_FILE_UPLOAD_API_URL, api_key)
 
         file_uri, mime_type = uploader.upload_raw_bytes(
             file_content=audio_content,
@@ -54,7 +52,7 @@ async def analyze_audio_with_gemini_tools(
             raise Exception("File upload failed using FileUploader.")
 
         # --- Step 2: Wait for the file to be active ---
-        if not check_file_status(file_uri, GOOGLE_API_KEY):
+        if not check_file_status(file_uri, api_key):
             raise Exception("File did not become active for processing.")
             
         # --- Step 3: Call Gemini's generateContent API ---
@@ -73,7 +71,7 @@ async def analyze_audio_with_gemini_tools(
 
 
         header = {
-            "x-goog-api-key": GOOGLE_API_KEY,
+            "x-goog-api-key": api_key,
             "Content-Type": "application/json"
         }
 
