@@ -4,11 +4,13 @@ import App from './App.tsx'
 import './index.css'
 import { AuthProvider } from "./context/AuthContext";
 import { useAuth } from "./hooks/useAuth";
-
+import { SocketProvider } from './context/SocketProvider.tsx';
 createRoot(document.getElementById("root")!).render(
     <React.StrictMode>
       <AuthProvider>
-        <App />
+        <SocketProvider>
+          <App />
+        </SocketProvider>
       </AuthProvider>
     </React.StrictMode>
 );

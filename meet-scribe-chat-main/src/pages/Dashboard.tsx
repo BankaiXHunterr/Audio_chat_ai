@@ -5,92 +5,26 @@ import { RecordingControls } from "@/components/RecordingControls";
 import { UpcomingMeetings } from "@/components/UpcomingMeetings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { 
-  Plus, 
-  Filter, 
-  Calendar,
-  Clock,
-  Users,
-  BarChart3
-} from "lucide-react";
+import { Plus, Filter, Calendar, Clock, Users, BarChart3 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast"; // For showing errors
-import { apiService, Meeting } from "@/services/apiService"; 
+import { apiService, Meeting } from "@/services/apiService";
 import { Spinner } from "@/components/Spinner";
-
-// Mock data for demonstration
-// const mockMeetings = [
-//   {
-//     id: "1",
-//     title: "Q4 Product Planning Meeting",
-//     date: new Date(2024, 11, 20, 14, 0),
-//     duration: "1h 45m",
-//     summary: "Discussed product roadmap for Q4, identified key milestones and resource allocation. Team agreed on three major feature releases and timeline adjustments.",
-//     participants: [
-//       { name: "Sarah Johnson", avatar: "/placeholder.svg" },
-//       { name: "Mike Chen", avatar: "/placeholder.svg" },
-//       { name: "Emily Davis", avatar: "/placeholder.svg" },
-//       { name: "Alex Rodriguez", avatar: "/placeholder.svg" }
-//     ],
-//     status: "completed" as const
-//   },
-//   {
-//     id: "2", 
-//     title: "Weekly Team Standup",
-//     date: new Date(2024, 11, 19, 9, 30),
-//     duration: "45m",
-//     summary: "Quick status updates from all team members. Discussed current blockers and upcoming priorities for the week.",
-//     participants: [
-//       { name: "Sarah Johnson", avatar: "/placeholder.svg" },
-//       { name: "Mike Chen", avatar: "/placeholder.svg" },
-//       { name: "Tom Wilson", avatar: "/placeholder.svg" }
-//     ],
-//     status: "completed" as const
-//   },
-//   {
-//     id: "3",
-//     title: "Client Onboarding Session",
-//     date: new Date(2024, 11, 18, 16, 0),
-//     duration: "2h 15m", 
-//     summary: "Comprehensive onboarding session with new enterprise client. Covered platform features, integration requirements, and training schedule.",
-//     participants: [
-//       { name: "Emily Davis", avatar: "/placeholder.svg" },
-//       { name: "John Smith", avatar: "/placeholder.svg" },
-//       { name: "Lisa Brown", avatar: "/placeholder.svg" },
-//       { name: "David Lee", avatar: "/placeholder.svg" },
-//       { name: "Maria Garcia", avatar: "/placeholder.svg" }
-//     ],
-//     status: "completed" as const
-//   },
-//   {
-//     id: "4",
-//     title: "Budget Review Meeting",
-//     date: new Date(2024, 11, 17, 11, 0),
-//     duration: "1h 20m",
-//     summary: "Quarterly budget review with finance team. Analyzed spending patterns and projected Q1 budget requirements.",
-//     participants: [
-//       { name: "Alex Rodriguez", avatar: "/placeholder.svg" },
-//       { name: "Jennifer Kim", avatar: "/placeholder.svg" }
-//     ],
-//     status: "processing" as const
-//   }
-// ];
-
-// const mockMeetings = [];
+import { useSocket } from "@/context/SocketProvider"; // <-- Use the hook
 
 export default function Dashboard() {
   const { toast } = useToast();
+  const { socket, isConnected } = useSocket();
 
-
-    // 1. Set up state for real meetings, loading, and errors
+  // 1. Set up state for real meetings, loading, and errors
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -103,6 +37,31 @@ export default function Dashboard() {
   const [sortBy, setSortBy] = useState("date-desc");
   const [filterStatus, setFilterStatus] = useState("all");
 
+  useEffect(() => {
+    // Make sure the socket is connected before setting up listeners
+    if (socket && isConnected) {
+      // Listener for meeting progress updates
+      const handleMeetingUpdate = (data: {
+        meetingId: string;
+        status: string;
+        progress?: number;
+      }) => {
+        console.log("Received meeting update:", data);
+
+        // Find the meeting in your local state and update its status
+        // setMeetings(prevMeetings => ...);
+      };
+
+      // Set up the listener
+      socket.on("meeting_progress", handleMeetingUpdate);
+
+      // Clean up the listener when the component unmounts
+      return () => {
+        socket.off("meeting_progress", handleMeetingUpdate);
+      };
+    }
+  }, [socket, isConnected]); // Re-run effect when connection status changes
+
   // 2. Use useEffect to fetch meetings when the component loads
   useEffect(() => {
     const fetchMeetings = async () => {
@@ -113,7 +72,8 @@ export default function Dashboard() {
         const result = await apiService.getMeetings();
         setMeetings(result.meetings); // Update the state with meetings from the API
       } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : "Failed to load meetings.";
+        const errorMessage =
+          err instanceof Error ? err.message : "Failed to load meetings.";
         setError(errorMessage);
         toast({
           title: "Error",
@@ -129,13 +89,54 @@ export default function Dashboard() {
   }, [toast]); // The dependency array ensures this runs once on mount
 
 
+  // highlight-start
+  // This new useEffect listens for real-time updates
+  useEffect(() => {
+    if (socket && isConnected) {
+      // Define the handler function for the event
+      const handleProcessingComplete = (data: { meetingId: string; status: string }) => {
+        console.log("Processing complete event received:", data);
+        
+        // Update the status of the specific meeting in the local state
+        setMeetings(prevMeetings =>
+          prevMeetings.map(meeting =>
+            meeting.id === data.meetingId
+              ? { ...meeting, status: data.status as 'completed' | 'failed' }
+              : meeting
+          )
+        );
+        
+        // Show a toast notification
+        toast({
+          title: "Processing Complete!",
+          description: `The meeting is now ready to be viewed.`,
+        });
+      };
+
+      // Set up the listener
+      socket.on('meeting_processing_complete', handleProcessingComplete);
+
+      // Clean up the listener when the component unmounts
+      return () => {
+        socket.off('meeting_processing_complete', handleProcessingComplete);
+      };
+    }
+  }, [socket, isConnected, toast]); // Dependencies for the effect
+  // highlight-end
+
+
+
+
   // 3. Update filtering/sorting to work with the new data structure
   const filteredMeetings = meetings
-    .filter(meeting => {
-      const matchesSearch = meeting.title.toLowerCase().includes(searchQuery.toLowerCase());
+    .filter((meeting) => {
+      const matchesSearch = meeting.title
+        .toLowerCase()
+        .includes(searchQuery.toLowerCase());
       // Your backend 'status' is now processing_status and embedding_status.
       // We'll use processing_status for this filter for now.
-      const matchesStatus = filterStatus === "all" || meeting.status === filterStatus;
+      const matchesStatus =
+        filterStatus === "all" || meeting.status === filterStatus;
       return matchesSearch && matchesStatus;
     })
     .sort((a, b) => {
@@ -143,23 +144,28 @@ export default function Dashboard() {
       const dateA = new Date(a.createdAt).getTime();
       const dateB = new Date(b.createdAt).getTime();
       switch (sortBy) {
-        case "date-desc": return dateB - dateA;
-        case "date-asc": return dateA - dateB;
-        case "title-asc": return a.title.localeCompare(b.title);
-        case "title-desc": return b.title.localeCompare(a.title);
-        default: return 0;
+        case "date-desc":
+          return dateB - dateA;
+        case "date-asc":
+          return dateA - dateB;
+        case "title-asc":
+          return a.title.localeCompare(b.title);
+        case "title-desc":
+          return b.title.localeCompare(a.title);
+        default:
+          return 0;
       }
     });
 
   const stats = {
     total: meetings.length,
-    thisWeek: meetings.filter(m => {
+    thisWeek: meetings.filter((m) => {
       const weekAgo = new Date();
       weekAgo.setDate(weekAgo.getDate() - 7);
       return new Date(m.date) >= weekAgo;
     }).length,
     totalDuration: "8h 5m",
-    participants: new Set(meetings.flatMap(m => m.participants)).size
+    participants: new Set(meetings.flatMap((m) => m.participants)).size,
   };
 
   const handleDeleteMeeting = async (meetingId: string) => {
@@ -167,13 +173,16 @@ export default function Dashboard() {
     try {
       await apiService.deleteMeeting(meetingId);
       // After deleting, refetch the meetings to update the list
-      setMeetings(prevMeetings => prevMeetings.filter(meeting => meeting.id !== meetingId));
+      setMeetings((prevMeetings) =>
+        prevMeetings.filter((meeting) => meeting.id !== meetingId)
+      );
       toast({
         title: "Success",
         description: "Meeting has been deleted.",
       });
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to delete meeting.";
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to delete meeting.";
       setError(errorMessage);
       toast({
         title: "Error",
@@ -185,7 +194,7 @@ export default function Dashboard() {
     }
   };
 
-    if (isLoading) {
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-background">
         <Navigation />
@@ -201,7 +210,7 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-background pb-20">
       <Navigation />
-      
+
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* Header */}
         <div className="mb-8">
@@ -236,28 +245,36 @@ export default function Dashboard() {
             <div className="bg-gradient-card rounded-lg p-4 border shadow-card">
               <div className="flex items-center space-x-2">
                 <BarChart3 className="w-5 h-5 text-primary" />
-                <span className="text-sm font-medium text-muted-foreground">Total Meetings</span>
+                <span className="text-sm font-medium text-muted-foreground">
+                  Total Meetings
+                </span>
               </div>
               <p className="text-2xl font-bold mt-1">{stats.total}</p>
             </div>
             <div className="bg-gradient-card rounded-lg p-4 border shadow-card">
               <div className="flex items-center space-x-2">
                 <Calendar className="w-5 h-5 text-accent" />
-                <span className="text-sm font-medium text-muted-foreground">This Week</span>
+                <span className="text-sm font-medium text-muted-foreground">
+                  This Week
+                </span>
               </div>
               <p className="text-2xl font-bold mt-1">{stats.thisWeek}</p>
             </div>
             <div className="bg-gradient-card rounded-lg p-4 border shadow-card">
               <div className="flex items-center space-x-2">
                 <Clock className="w-5 h-5 text-success" />
-                <span className="text-sm font-medium text-muted-foreground">Total Duration</span>
+                <span className="text-sm font-medium text-muted-foreground">
+                  Total Duration
+                </span>
               </div>
               <p className="text-2xl font-bold mt-1">{stats.totalDuration}</p>
             </div>
             <div className="bg-gradient-card rounded-lg p-4 border shadow-card">
               <div className="flex items-center space-x-2">
                 <Users className="w-5 h-5 text-warning" />
-                <span className="text-sm font-medium text-muted-foreground">Participants</span>
+                <span className="text-sm font-medium text-muted-foreground">
+                  Participants
+                </span>
               </div>
               <p className="text-2xl font-bold mt-1">{stats.participants}</p>
             </div>
@@ -286,7 +303,7 @@ export default function Dashboard() {
                 <SelectItem value="title-desc">Title Z-A</SelectItem>
               </SelectContent>
             </Select>
-            
+
             <Select value={filterStatus} onValueChange={setFilterStatus}>
               <SelectTrigger className="w-40">
                 <Filter className="w-4 h-4" />
@@ -311,11 +328,11 @@ export default function Dashboard() {
         {filteredMeetings.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredMeetings.map((meeting) => (
-              <MeetingCard 
-                key={meeting.id} 
-                meeting={meeting} 
+              <MeetingCard
+                key={meeting.id}
+                meeting={meeting}
                 onDelete={handleDeleteMeeting}
-                          // highlight-start
+                // highlight-start
                 // Pass the deleting state down to the card
                 isDeleting={deletingId === meeting.id}
                 // highlight-end
@@ -329,10 +346,9 @@ export default function Dashboard() {
             </div>
             <h3 className="text-xl font-semibold mb-2">No meetings found</h3>
             <p className="text-muted-foreground mb-6">
-              {searchQuery || filterStatus !== "all" 
-                ? "Try adjusting your search or filters" 
-                : "Upload your first meeting recording to get started"
-              }
+              {searchQuery || filterStatus !== "all"
+                ? "Try adjusting your search or filters"
+                : "Upload your first meeting recording to get started"}
             </p>
             {!searchQuery && filterStatus === "all" && (
               <Button asChild variant="hero" size="lg">

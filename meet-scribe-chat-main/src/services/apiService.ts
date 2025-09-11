@@ -857,7 +857,37 @@ class ApiService {
    * }
    * ```
    */
-  async processMeeting(meetingData: CreateMeetingRequest): Promise<{ meeting: Meeting; uploadUrl?: string }> {
+  // async processMeeting(meetingData: CreateMeetingRequest): Promise<{ meeting: Meeting; uploadUrl?: string }> {
+  //   // Create FormData for file upload
+  //   const formData = new FormData();
+  //   formData.append('recording', meetingData.recordingBlob);
+  //   formData.append('title', meetingData.title);
+  //   formData.append('date', meetingData.date);
+  //   formData.append('participants', JSON.stringify(meetingData.participants));
+
+  //   // Make request with FormData (no JSON content-type header)
+  //   const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.PROCESS_MEETING}`, {
+  //     method: 'POST',
+  //     headers: {
+  //       // Don't set Content-Type - let browser set it with boundary for FormData
+  //       'Authorization': `Bearer ${getAccessToken()}`,
+  //     },
+  //     body: formData,
+  //   });
+
+  //   if (!response.ok) {
+  //     await handleApiError(response, 'processMeeting');
+  //   }
+
+  //   const data = await response.json();
+  //   console.log('Meeting processing initiated:', data.meeting?.id);
+  //   return data.data || data;
+  // }
+
+
+  // In your apiService.ts file
+
+  async processMeeting(meetingData: CreateMeetingRequest): Promise<{ meeting: Meeting }> {
     // Create FormData for file upload
     const formData = new FormData();
     formData.append('recording', meetingData.recordingBlob);
@@ -865,23 +895,17 @@ class ApiService {
     formData.append('date', meetingData.date);
     formData.append('participants', JSON.stringify(meetingData.participants));
 
-    // Make request with FormData (no JSON content-type header)
-    const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.PROCESS_MEETING}`, {
-      method: 'POST',
-      headers: {
-        // Don't set Content-Type - let browser set it with boundary for FormData
-        'Authorization': `Bearer ${getAccessToken()}`,
-      },
-      body: formData,
-    });
-
-    if (!response.ok) {
-      await handleApiError(response, 'processMeeting');
-    }
-
-    const data = await response.json();
-    console.log('Meeting processing initiated:', data.meeting?.id);
-    return data.data || data;
+    // highlight-start
+    // Use the robust helper function instead of a direct fetch call.
+    // It already knows how to handle FormData correctly.
+    return this.makeRequest<{ meeting: Meeting }>(
+      API_CONFIG.ENDPOINTS.PROCESS_MEETING,
+      {
+        method: 'POST',
+        body: formData,
+      }
+    );
+    // highlight-end
   }
 
   /**
@@ -955,6 +979,8 @@ class ApiService {
    * console.log('Recording uploaded:', result.fileUrl);
    * ```
    */
+
+
   async uploadRecording(
     recordingFile: File | Blob,
     onProgress?: (progress: number) => void
