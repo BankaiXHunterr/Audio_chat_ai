@@ -43,7 +43,7 @@ async def connect(sid, environ, auth):
         
         # Store the user's ID and join them to a private room
         sid_to_user[sid] = user_id
-        sio.enter_room(sid, user_id)
+        await sio.enter_room(sid, user_id)
         
         # You can emit a confirmation event back to the client
         await sio.emit('authenticated', {'status': 'success'}, to=sid)
