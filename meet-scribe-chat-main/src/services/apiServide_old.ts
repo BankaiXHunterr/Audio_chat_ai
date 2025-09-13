@@ -15,11 +15,11 @@
  * @author Your Team
  * @version 1.0.0
  */
-import { supabase } from "@/lib/supabaseClient";
 
 // ============================================================================
 // TYPE DEFINITIONS & INTERFACES
 // ============================================================================
+
 /**
  * Standard API response wrapper
  * All API responses follow this structure for consistency
@@ -73,6 +73,24 @@ interface UserProfile {
 interface registerResponse {
   message: string;
 }
+
+/**
+ * Meeting data structure
+ */
+// interface Meeting {
+//   id: string;
+//   title: string;
+//   date: string;
+//   duration: number; // in seconds
+//   participants: string[]; // email addresses
+//   transcript?: string;
+//   summary?: string;
+//   actionItems?: string[];
+//   recordingUrl?: string;
+//   status: 'processing' | 'completed' | 'failed';
+//   createdAt: string;
+//   updatedAt: string;
+// }
 
 /**
  * Meeting creation request data
@@ -192,10 +210,12 @@ const API_CONFIG = {
   }
 } as const;
 
-
+/**
+ * Local storage keys for token management
+ */
 const STORAGE_KEYS = {
-  // We no longer need to store access/refresh tokens in our own storage
-  // as Supabase manages them for us.
+  ACCESS_TOKEN: 'meetingSummarizer_accessToken',
+  REFRESH_TOKEN: 'meetingSummarizer_refreshToken',
   USER_PROFILE: 'meetingSummarizer_userProfile',
 } as const;
 
@@ -207,16 +227,52 @@ const STORAGE_KEYS = {
  * Get stored access token from localStorage
  * @returns {string | null} The access token or null if not found
  */
-
-// const getAccessToken = (): string | null => {
-//   return localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
-// };
-const getAccessToken = async (): Promise<string | null> => {
-  const session = await supabase.auth.getSession();
-  return session.data.session?.access_token || null;
+const getAccessToken = (): string | null => {
+  return localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
 };
 
+/**
+ * Get stored refresh token from localStorage
+ * @returns {string | null} The refresh token or null if not found
+ */
+const getRefreshToken = (): string | null => {
+  return localStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
+};
 
+/**
+ * Store authentication tokens in localStorage
+ * @param {AuthTokens} tokens - The authentication tokens to store
+ */
+const storeTokens = (tokens: AuthTokens): void => {
+  localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, tokens.access_token);
+  localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, tokens.refresh_token);
+
+  // Set expiration reminder (optional: for proactive refresh)
+  const expirationTime = Date.now() + (tokens.expires_in * 1000);
+  localStorage.setItem('tokenExpiration', expirationTime.toString());
+};
+
+/**
+ * Clear all stored authentication data
+ */
+const clearAuthData = (): void => {
+  localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
+  localStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
+  localStorage.removeItem(STORAGE_KEYS.USER_PROFILE);
+  localStorage.removeItem('tokenExpiration');
+};
+
+/**
+ * Build authorization headers for authenticated requests
+ * @returns {HeadersInit} Headers object with authorization
+ */
+const buildAuthHeaders = (): HeadersInit => {
+  const token = getAccessToken();
+  return {
+    'Content-Type': 'application/json',
+    ...(token && { 'Authorization': `Bearer ${token}` }),
+  };
+};
 
 /**
  * Handle API errors with proper logging and user-friendly messages
@@ -245,69 +301,6 @@ const handleApiError = async (response: Response, context: string): Promise<neve
   throw new Error(errorMessage);
 };
 
-
-
-
-
-/**
- * Get stored refresh token from localStorage
- * @returns {string | null} The refresh token or null if not found
- */
-
-// const getRefreshToken = (): string | null => {
-//   return localStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
-// };
-
-/**
- * Store authentication tokens in localStorage
- * @param {AuthTokens} tokens - The authentication tokens to store
- */
-
-// const storeTokens = (tokens: AuthTokens): void => {
-//   localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, tokens.access_token);
-//   localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, tokens.refresh_token);
-
-//   // Set expiration reminder (optional: for proactive refresh)
-//   const expirationTime = Date.now() + (tokens.expires_in * 1000);
-//   localStorage.setItem('tokenExpiration', expirationTime.toString());
-// };
-
-/**
- * Clear all stored authentication data
- */
-
-// const clearAuthData = (): void => {
-//   localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
-//   localStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
-//   localStorage.removeItem(STORAGE_KEYS.USER_PROFILE);
-//   localStorage.removeItem('tokenExpiration');
-// };
-
-const clearAuthData = (): void => {
-  localStorage.removeItem(STORAGE_KEYS.USER_PROFILE);
-};
-
-/**
- * Build authorization headers for authenticated requests
- * @returns {HeadersInit} Headers object with authorization
- */
-
-// const buildAuthHeaders = (): HeadersInit => {
-//   const token = getAccessToken();
-//   return {
-//     'Content-Type': 'application/json',
-//     ...(token && { 'Authorization': `Bearer ${token}` }),
-//   };
-// };
-
-const buildAuthHeaders = async (): Promise<HeadersInit> => {
-  const token = await getAccessToken();
-  return {
-    'Content-Type': 'application/json',
-    ...(token && { 'Authorization': `Bearer ${token}` }),
-  };
-};
-
 // ============================================================================
 // CORE API SERVICE CLASS
 // ============================================================================
@@ -329,9 +322,6 @@ class ApiService {
    * @returns {Promise<T>} Parsed response data
    * @throws {Error} On request failure or authentication issues
    */
-
-
-
   private async makeRequest<T>(
     endpoint: string,
     options: RequestInit = {},
@@ -340,31 +330,53 @@ class ApiService {
     const url = `${API_CONFIG.BASE_URL}${endpoint}`;
 
     const headers: HeadersInit = { ...options.headers };
+    // if (endpoint === API_CONFIG.ENDPOINTS.LOGIN) {
+    //   headers['Content-Type'] = 'application/x-www-form-urlencoded';
+    // }
 
-    // Add authorization header if the request requires it.
-    if (requiresAuth) {
-      const token = await getAccessToken();
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      } else {
-        // If auth is required but no token is found, we should fail early.
-        throw new Error("Authentication token not found. Please log in again.");
-      }
-    }
-
-    // CRITICAL FIX: Only set the 'Content-Type' header for non-FormData requests.
-    // For FormData, the browser must set the 'Content-Type' automatically
-    // to include the multipart boundary.
     if (!(options.body instanceof FormData)) {
       headers['Content-Type'] = 'application/json';
     }
 
-    // Make the request
-    const response = await fetch(url, {
+
+    // Add authorization header if required
+    if (requiresAuth) {
+      const token = getAccessToken();
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+    }
+
+    // Make the initial request
+    let response = await fetch(url, {
       ...options,
       headers,
     });
 
+    // Handle token refresh on 401 Unauthorized
+    if (response.status === 401 && requiresAuth) {
+      console.log('Access token expired, attempting refresh...');
+
+      try {
+        await this.refreshAccessToken();
+
+        // Retry the original request with new token
+        const newToken = getAccessToken();
+        if (newToken) {
+          headers['Authorization'] = `Bearer ${newToken}`;
+          response = await fetch(url, {
+            ...options,
+            headers,
+          });
+        }
+      } catch (refreshError) {
+        console.error('Token refresh failed:', refreshError);
+        // Clear invalid tokens and redirect to login
+        clearAuthData();
+        window.location.href = '/login';
+        throw new Error('Session expired. Please log in again.');
+      }
+    }
 
     // Handle non-successful responses
     if (!response.ok) {
@@ -375,11 +387,39 @@ class ApiService {
       // Return a generic success object or null, as there's no body
       return Promise.resolve({} as T);
     }
-
     // Parse and return response data
     const data = await response.json();
     return data.data || data; // Handle both wrapped and unwrapped responses
+  }
 
+  /**
+   * Refresh the access token using the stored refresh token
+   * 
+   * @private
+   * @returns {Promise<void>}
+   * @throws {Error} If refresh fails
+   */
+  private async refreshAccessToken(): Promise<void> {
+    const refreshToken = getRefreshToken();
+
+    if (!refreshToken) {
+      throw new Error('No refresh token available');
+    }
+
+    const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.REFRESH_TOKEN}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ refreshToken }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to refresh token');
+    }
+
+    const data = await response.json();
+    storeTokens(data.data);
   }
 
   // ========================================================================
@@ -430,14 +470,12 @@ class ApiService {
 
     // 3. Store tokens and user profile from the final, parsed data.
     // By the time you get here, 'responseData' is the clean JSON object.
-
-        // After a successful login, we also store the user profile for later use
+    storeTokens(responseData.tokens);
     localStorage.setItem(STORAGE_KEYS.USER_PROFILE, JSON.stringify(responseData.user));
 
     console.log('User successfully authenticated:', responseData.user.email);
     return responseData;
   }
-
 
   /**
    * Register a new user account
@@ -511,10 +549,29 @@ class ApiService {
    * }
    * ```
    */
-
   async logout(): Promise<void> {
-    clearAuthData();
+    try {
+      const refreshToken = getRefreshToken();
+      if (refreshToken) {
+        await this.makeRequest(
+          API_CONFIG.ENDPOINTS.LOGOUT,
+          {
+            method: 'POST',
+            body: JSON.stringify({ refreshToken }),
+          },
+          true
+        );
+      }
+    } catch (error) {
+      console.warn('Logout request failed:', error);
+      // Continue with local cleanup even if server request fails
+    } finally {
+      // Always clear local auth data
+      clearAuthData();
+      console.log('Local authentication data cleared');
+    }
   }
+
   /**
    * Request password reset email
    * 
@@ -534,7 +591,6 @@ class ApiService {
    * }
    * ```
    */
-
   async forgotPassword(email: string): Promise<{ message: string }> {
     return await this.makeRequest<{ message: string }>(
       API_CONFIG.ENDPOINTS.FORGOT_PASSWORD,
@@ -596,8 +652,6 @@ class ApiService {
     return profile;
   }
 
-
-  
   /**
    * Update user profile information
    * 
@@ -732,7 +786,6 @@ class ApiService {
    * console.log(`Showing ${meetings.length} of ${total} meetings`);
    * ```
    */
-
   async getMeetings(params: {
     page?: number;
     limit?: number;
@@ -804,6 +857,33 @@ class ApiService {
    * }
    * ```
    */
+  // async processMeeting(meetingData: CreateMeetingRequest): Promise<{ meeting: Meeting; uploadUrl?: string }> {
+  //   // Create FormData for file upload
+  //   const formData = new FormData();
+  //   formData.append('recording', meetingData.recordingBlob);
+  //   formData.append('title', meetingData.title);
+  //   formData.append('date', meetingData.date);
+  //   formData.append('participants', JSON.stringify(meetingData.participants));
+
+  //   // Make request with FormData (no JSON content-type header)
+  //   const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.PROCESS_MEETING}`, {
+  //     method: 'POST',
+  //     headers: {
+  //       // Don't set Content-Type - let browser set it with boundary for FormData
+  //       'Authorization': `Bearer ${getAccessToken()}`,
+  //     },
+  //     body: formData,
+  //   });
+
+  //   if (!response.ok) {
+  //     await handleApiError(response, 'processMeeting');
+  //   }
+
+  //   const data = await response.json();
+  //   console.log('Meeting processing initiated:', data.meeting?.id);
+  //   return data.data || data;
+  // }
+
 
   // In your apiService.ts file
 
@@ -845,11 +925,11 @@ class ApiService {
    * }
    * ```
    */
-  async deleteMeeting(meetingId: string): Promise<void> {
+  async deleteMeeting(meetingId: string): Promise<{ message: string }> {
     const endpoint = API_CONFIG.ENDPOINTS.DELETE_MEETING.replace(':id', meetingId);
     const result = await this.makeRequest<{ message: string }>(endpoint, { method: 'DELETE' });
     console.log('Meeting deleted:', meetingId);
-    // return result;
+    return result;
   }
 
   /**
@@ -1007,11 +1087,11 @@ class ApiService {
    * }
    * ```
    */
-  // isAuthenticated(): boolean {
-  //   const accessToken = getAccessToken();
-  //   const refreshToken = getRefreshToken();
-  //   return !!(accessToken && refreshToken);
-  // }
+  isAuthenticated(): boolean {
+    const accessToken = getAccessToken();
+    const refreshToken = getRefreshToken();
+    return !!(accessToken && refreshToken);
+  }
 
   /**
    * Get cached user profile from localStorage
@@ -1096,7 +1176,7 @@ export type {
 // Export utility functions for advanced use cases
 export {
   getAccessToken,
-  // getRefreshToken,
+  getRefreshToken,
   clearAuthData,
 };
 

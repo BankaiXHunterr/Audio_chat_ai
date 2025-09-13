@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, redirect, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,7 +8,7 @@ import { MessageSquare, Eye, EyeOff, Building2, Chrome } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiService } from "@/services/apiService";
 import { useAuth } from "@/hooks/useAuth";
-
+import { supabase } from "@/lib/supabaseClient";
 
 export default function Login() {
   const { login } = useAuth();
@@ -21,31 +21,58 @@ export default function Login() {
   const { toast } = useToast();
   const navigate = useNavigate();
 
+// Handle Google OAuth login
   const handleGoogleLogin = async () => {
+    setIsLoading(true);
     try {
-      // TODO: Implement Google OAuth with your FastAPI backend
-      toast({
-        title: "OAuth Not Configured",
-        description: "Google login requires backend OAuth configuration",
-        variant: "destructive",
+      // Use the signInWithOAuth method provided by the Supabase JS library
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          // This will redirect the user back to your app after authentication.
+          // Make sure this URL is in your Supabase Auth Providers config.
+          redirectTo: window.location.origin 
+        },
       });
+
+      if (data.url){
+        window.location.href = data.url;
+      }
+
+      // The rest of the authentication flow is handled by the AuthContext listener.
+      console.log('[Login.tsx][line-43] Google login initiated:', data);
+
     } catch (error) {
       toast({
         title: "Error",
-        description: "Google login failed",
+        description: error instanceof Error ? error.message : "Google login failed",
         variant: "destructive",
       });
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const handleMicrosoftLogin = async () => {
+    setIsLoading(true);
+
     try {
-      // TODO: Implement Microsoft OAuth with your FastAPI backend
-      toast({
-        title: "OAuth Not Configured", 
-        description: "Microsoft login requires backend OAuth configuration",
-        variant: "destructive",
+      // Use the signInWithOAuth method provided by the Supabase JS library
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'azure',
+        options: {
+          scopes:'email',
+          redirectTo:window.location.origin
+        },
       });
+
+      if (data.url){
+        window.location.href = data.url;
+      }
+
+      // The rest of the authentication flow is handled by the AuthContext listener.
+      console.log('[Login.tsx][line-43] Microsoft login initiated:', data);
+
     } catch (error) {
       toast({
         title: "Error",

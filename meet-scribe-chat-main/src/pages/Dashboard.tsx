@@ -53,11 +53,11 @@ export default function Dashboard() {
       };
 
       // Set up the listener
-      socket.on("meeting_progress", handleMeetingUpdate);
+      socket.on("meeting_processing_complete", handleMeetingUpdate);
 
       // Clean up the listener when the component unmounts
       return () => {
-        socket.off("meeting_progress", handleMeetingUpdate);
+        socket.off("meeting_processing_complete", handleMeetingUpdate);
       };
     }
   }, [socket, isConnected]); // Re-run effect when connection status changes
@@ -164,7 +164,7 @@ export default function Dashboard() {
       weekAgo.setDate(weekAgo.getDate() - 7);
       return new Date(m.date) >= weekAgo;
     }).length,
-    totalDuration: "8h 5m",
+    totalDuration: 0,
     participants: new Set(meetings.flatMap((m) => m.participants)).size,
   };
 
@@ -221,12 +221,12 @@ export default function Dashboard() {
                 Manage and explore your meeting summaries
               </p>
             </div>
-            <Button asChild variant="hero" size="lg">
+            {/* <Button asChild variant="hero" size="lg">
               <Link to="/upload">
                 <Plus className="w-5 h-5" />
                 New Meeting
               </Link>
-            </Button>
+            </Button> */}
           </div>
 
           {/* Live Recording Controls */}
@@ -236,9 +236,9 @@ export default function Dashboard() {
           </div>
 
           {/* Upcoming Meetings */}
-          <div className="mb-8">
+          {/* <div className="mb-8">
             <UpcomingMeetings />
-          </div>
+          </div> */}
 
           {/* Stats */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">

@@ -20,15 +20,23 @@ import {
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { apiService } from "@/services/apiService";
+import { useAuth } from "@/hooks/useAuth";
+
+
+
 
 export function Navigation() {
   const location = useLocation();
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  const {user, logout} = useAuth();
+
   const handleLogout = async () => {
     try {
-      await apiService.logout();
+      // await apiService.logout();
+      await logout();
+      
       toast({
         title: "Logged out",
         description: "You have been successfully logged out",

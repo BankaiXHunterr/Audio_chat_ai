@@ -9,6 +9,9 @@
     "paths": {
       "@/*": ["./src/*"]
     },
+    
+    "strict": true, // Enables all strict type-checking options
+    "forceConsistentCasingInFileNames": true, // Prevents issues on case-sensitive file system
     "noImplicitAny": false,
     "noUnusedParameters": false,
     "skipLibCheck": true,
