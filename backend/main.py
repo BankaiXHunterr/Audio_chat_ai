@@ -487,7 +487,7 @@ async def process_meeting(
 
     try:
         print(f"Attempting to upload file to: {file_path}")
-        supabase.storage.from_("recordings").upload(
+        await supabase.storage.from_("recordings").upload(
             path=file_path,
             file=contents,
             file_options={"content-type": recording.content_type}
