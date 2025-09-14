@@ -38,6 +38,15 @@ from modules.worker import process_meeting_job
 from contextlib import asynccontextmanager
 # from pydub import AudioSegment
 import io
+import tempfile
+
+
+
+TEMP_DIR = pathlib.Path("./temp_recordings")
+TEMP_DIR.mkdir(exist_ok=True)
+
+
+
 # --- Basic Setup ---
 load_dotenv()
 
@@ -63,7 +72,9 @@ async def listen_for_results(results_queue: Queue):
     while True:
         if not results_queue.empty():
             result = results_queue.get()
+
             print(f"[listen_for_results][line-88] got following payload for websocket:{result}")
+
             await sio.emit(
                 'meeting_processing_complete',
                 {'meetingId': result['meetingId'], 'status': result['status']},
@@ -104,7 +115,6 @@ app.mount("/socket.io", socket_app)
 # --- ADD THIS CORS MIDDLEWARE CONFIGURATION ---
 origins = [
     "https://audio-chat-ai.vercel.app",
-
 ]
 
 app.add_middleware(
@@ -473,11 +483,13 @@ async def process_meeting(
     # --- 3. Attempt to upload the file to Supabase Storage ---
     file_path = f"{user_id}/{meeting_id}{file_extension}"
     contents = await recording.read()
-    
 
-    # audio_bytes = io.BytesIO(contents)
+    temp_file_path = TEMP_DIR/f"{meeting_id}{file_extension}"
 
+    with open(temp_file_path,'wb') as f:
+        f.write(contents)
 
+    print(f"✅ File saved temporarily to: {temp_file_path}")  
     try:
         print(f"Attempting to upload file to: {file_path}")
         supabase.storage.from_("recordings").upload(
@@ -502,11 +514,11 @@ async def process_meeting(
         job_data = {
             "meeting_id": meeting_id,
             "user_id": user_id,
-            "recording_contents": contents,
             "recording_content_type": recording.content_type,
-            "file_extension": file_extension, 
+            "temp_file_path": str(temp_file_path),
             "recording_url": recording_url,
         }
+
         request.app.state.task_queue.put(job_data)
         
         # Return the created meeting object to the frontend

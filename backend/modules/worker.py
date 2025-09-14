@@ -30,12 +30,23 @@ def process_meeting_job(job: dict, results_queue):
     # Correctly unpack the job data
     meeting_id = job.get("meeting_id")
     user_id = job.get("user_id")
-    recording_contents = job.get("recording_contents")
+    # recording_contents = job.get("recording_contents")
+    temp_file_path = job.get("temp_file_path")
     recording_content_type = job.get("recording_content_type")
+    recording_url = job.get("recording_url")
+
+
+    if not temp_file_path or not os.path.exists(temp_file_path):
+        pass
+
 
     print(f"⚙️ Worker picked up job for meeting: {meeting_id}")
 
     try:
+
+        with open(temp_file_path,'rb') as f:
+            recording_contents = f.read()
+
         # Mark the meeting as 'processing'
         supabase.table("meetings").update({"status": "processing"}).eq("id", meeting_id).execute()
 
@@ -53,6 +64,7 @@ def process_meeting_job(job: dict, results_queue):
             try:
                 print(f"🤖 Attempting analysis for meeting {meeting_id} with a new API key...")
                 # Run the async function within the synchronous worker
+
                 asyncio.run(analyze_audio_with_gemini_tools(
                     supabase=supabase,
                     meeting_id=meeting_id,
@@ -84,24 +96,3 @@ def process_meeting_job(job: dict, results_queue):
         supabase.table("meetings").update({"status": "failed"}).eq("id", meeting_id).execute()
         results_queue.put({"meetingId": meeting_id, "userId": user_id, "status": "failed"})
 
-
-
-
-# def worker_(queue,worker_id):
-#     while True:
-#         job = queue.get()
-#         try:
-#             process_meeting_job(job)
-#         except Exception as e:
-#             pass
-
-
-# def start_worker(queue,num_worker=1):
-#     workers = []
-#     for i in range(num_worker):
-#         p = Process(target=worker_,args=(queue,i+1))
-#         p.daemon = True
-#         p.start()
-#         workers.append(p)
-    
-#     return workers
