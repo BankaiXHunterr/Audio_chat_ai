@@ -42,7 +42,7 @@ import tempfile
 
 
 
-TEMP_DIR = pathlib.Path("./temp_recordings")
+TEMP_DIR = pathlib.Path("./temp_recordings").resolve()
 TEMP_DIR.mkdir(exist_ok=True)
 
 
@@ -494,7 +494,7 @@ async def process_meeting(
         print(f"Attempting to upload file to: {file_path}")
         supabase.storage.from_("recordings").upload(
             path=file_path,
-            file=contents,
+            file=str(temp_file_path),
             file_options={"content-type": recording.content_type}
         )
         

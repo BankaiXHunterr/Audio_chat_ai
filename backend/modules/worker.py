@@ -37,7 +37,8 @@ def process_meeting_job(job: dict, results_queue):
 
 
     if not temp_file_path or not os.path.exists(temp_file_path):
-        pass
+        raise ValueError(f"Worker Error: Temporary file path not provided or file does not exist at '{temp_file_path}'")
+
 
 
     print(f"⚙️ Worker picked up job for meeting: {meeting_id}")
