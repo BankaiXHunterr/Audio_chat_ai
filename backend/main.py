@@ -1,6 +1,5 @@
 from email.mime import message
 import os
-from turtle import title
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
@@ -116,6 +115,7 @@ app.mount("/socket.io", socket_app)
 # --- ADD THIS CORS MIDDLEWARE CONFIGURATION ---
 origins = [
     "https://audio-chat-ai.vercel.app",
+    "*"
 ]
 
 app.add_middleware(
