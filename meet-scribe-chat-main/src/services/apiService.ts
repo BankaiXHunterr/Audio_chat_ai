@@ -338,7 +338,6 @@ class ApiService {
     requiresAuth: boolean = true
   ): Promise<T> {
     const url = `${API_CONFIG.BASE_URL}${endpoint}`;
-
     const headers: HeadersInit = { ...options.headers };
 
     // Add authorization header if the request requires it.
@@ -354,12 +353,13 @@ class ApiService {
     // }
 
     if (requiresAuth) {
-      const token = await getAccessToken();
-      if (!token) {
-        // This is the error you were seeing. It's a safeguard.
-        throw new Error("Authentication token not found. Please log in again.");
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session?.access_token) {
+        // If no session is found, fail early.
+        throw new Error("Authentication session not found. Please log in again.");
       }
-      headers['Authorization'] = `Bearer ${token}`;
+      headers['Authorization'] = `Bearer ${session.access_token}`;
     }
 
     // CRITICAL FIX: Only set the 'Content-Type' header for non-FormData requests.
