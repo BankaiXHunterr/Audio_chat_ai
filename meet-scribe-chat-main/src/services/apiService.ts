@@ -161,7 +161,7 @@ interface ChatResponse {
  * Base URL and endpoints for all API calls
  */
 const API_CONFIG = {
-  BASE_URL: import.meta.env.VITE_API_BASE_URL ||  'https://audio-chat-ai.onrender.com',
+  BASE_URL: import.meta.env.VITE_API_BASE_URL || 'https://audio-chat-ai.onrender.com',
 
   ENDPOINTS: {
     // Authentication endpoints
@@ -225,6 +225,15 @@ const getAccessToken = async (): Promise<string | null> => {
  * @throws {Error} Throws an error with user-friendly message
  */
 const handleApiError = async (response: Response, context: string): Promise<never> => {
+
+
+  if (response.status === 401) {
+    // We call supabase.auth.signOut() to clear the Supabase session cookies
+    await supabase.auth.signOut();
+    // Redirect to the login page
+    window.location.href = '/login';
+  }
+
   let errorMessage = 'An unexpected error occurred';
 
   try {
@@ -354,7 +363,7 @@ class ApiService {
 
     if (requiresAuth) {
       const { data: { session } } = await supabase.auth.getSession();
-      
+
       if (!session?.access_token) {
         // If no session is found, fail early.
         throw new Error("Authentication session not found. Please log in again.");
@@ -441,7 +450,7 @@ class ApiService {
     // 3. Store tokens and user profile from the final, parsed data.
     // By the time you get here, 'responseData' is the clean JSON object.
 
-        // After a successful login, we also store the user profile for later use
+    // After a successful login, we also store the user profile for later use
     localStorage.setItem(STORAGE_KEYS.USER_PROFILE, JSON.stringify(responseData.user));
 
     console.log('User successfully authenticated:', responseData.user.email);
@@ -607,7 +616,7 @@ class ApiService {
     return profile;
   }
 
-  
+
   /**
    * Update user profile information
    * 
