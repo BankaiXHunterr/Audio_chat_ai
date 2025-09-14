@@ -461,7 +461,17 @@ async def process_meeting(
     # --- 1. Generate IDs and prepare initial data ---
     meeting_id = str(uuid.uuid4())
     file_extension = pathlib.Path(recording.filename).suffix
-    participants_list = json.loads(participants)
+
+
+    participants_list = [] # Start with a safe default
+    if participants:
+        try:
+            participants_list = json.loads(participants)
+        except json.JSONDecodeError:
+            # This handles cases where the string is not empty but still invalid JSON
+            raise HTTPException(status_code=400, detail="Invalid format for participants JSON.")
+    
+    # participants_list = json.loads(participants)
 
     # --- 2. Create an initial meeting record with status 'uploading' ---
     initial_meeting_data = {
