@@ -5,8 +5,6 @@ services:
   - name: redis-broker
     type: redis
     plan: free
-    # CHANGED: Added required IP allow list for security.
-    # This allows access from any other service within your private Render network.
     ipAllowList:
       - source: 0.0.0.0/0
         description: Internal access
@@ -23,15 +21,15 @@ services:
     startCommand: "uvicorn main:app --host 0.0.0.0 --port $PORT"
     envVars:
       - key: PYTHON_VERSION
-        value: 3.11
+        # CHANGED: Specified the full patch version
+        value: 3.11.9
       - key: REDIS_URL
         fromService:
           type: redis
           name: redis-broker
-          # CHANGED: The correct property for the Redis URL is 'connectionString'
           property: connectionString
       # --- Secrets (set these in the Render Dashboard) ---
-      - key: API_BASE_URL # NOTE: Moved to secrets for manual setup
+      - key: API_BASE_URL
         sync: false
       - key: SUPABASE_URL
         sync: false
@@ -54,15 +52,15 @@ services:
     startCommand: "celery -A celery_worker.celery_app worker --loglevel=info"
     envVars:
       - key: PYTHON_VERSION
-        value: 3.11
+        # CHANGED: Specified the full patch version
+        value: 3.11.9
       - key: REDIS_URL
         fromService:
           type: redis
           name: redis-broker
-          # CHANGED: The correct property for the Redis URL is 'connectionString'
           property: connectionString
       # --- Secrets (set these in the Render Dashboard) ---
-      - key: API_BASE_URL # NOTE: Moved to secrets for manual setup
+      - key: API_BASE_URL
         sync: false
       - key: SUPABASE_URL
         sync: false
