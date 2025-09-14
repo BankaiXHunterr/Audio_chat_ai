@@ -103,9 +103,8 @@ app = FastAPI(lifespan=lifespan)
 app.mount("/socket.io", socket_app)
 # --- ADD THIS CORS MIDDLEWARE CONFIGURATION ---
 origins = [
-    # Add your frontend's URL here.
-    # For development, allowing all origins is common.
-    "*"
+    "https://audio-chat-ai.vercel.app",
+
 ]
 
 app.add_middleware(
