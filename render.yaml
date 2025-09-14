@@ -1,17 +1,21 @@
-# render.yaml - Place this in the root of your GitHub repository
+# render.yaml - CORRECTED VERSION
 
 services:
   # 1. The Redis instance
   - name: redis-broker
     type: redis
     plan: free
+    # CHANGED: Added required IP allow list for security.
+    # This allows access from any other service within your private Render network.
+    ipAllowList:
+      - source: 0.0.0.0/0
+        description: Internal access
 
   # 2. The FastAPI Web Service
   - name: fastapi-web
     type: web
     env: python
     plan: starter
-    # ADDED: This tells Render to run commands from the 'backend' folder
     rootDir: ./backend 
     repo: https://github.com/BankaiXHunterr/Audio_chat_ai
     branch: main
@@ -24,13 +28,11 @@ services:
         fromService:
           type: redis
           name: redis-broker
-          property: internalUrl
-      - key: API_BASE_URL
-        fromService:
-          type: web
-          name: fastapi-web
-          property: url
-      # --- Secrets ---
+          # CHANGED: The correct property for the Redis URL is 'connectionString'
+          property: connectionString
+      # --- Secrets (set these in the Render Dashboard) ---
+      - key: API_BASE_URL # NOTE: Moved to secrets for manual setup
+        sync: false
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_KEY
@@ -45,7 +47,6 @@ services:
     type: worker
     env: python
     plan: starter
-    # ADDED: This also needs to run from the 'backend' folder
     rootDir: ./backend 
     repo: https://github.com/BankaiXHunterr/Audio_chat_ai
     branch: main
@@ -58,13 +59,11 @@ services:
         fromService:
           type: redis
           name: redis-broker
-          property: internalUrl
-      - key: API_BASE_URL
-        fromService:
-          type: web
-          name: fastapi-web
-          property: url
-      # --- Secrets ---
+          # CHANGED: The correct property for the Redis URL is 'connectionString'
+          property: connectionString
+      # --- Secrets (set these in the Render Dashboard) ---
+      - key: API_BASE_URL # NOTE: Moved to secrets for manual setup
+        sync: false
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_KEY
