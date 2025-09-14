@@ -513,8 +513,13 @@ async def process_meeting(
             "recording_url": recording_url,
         }
 
-        # request.app.state.task_queue.put(job_data)
-        process_meeting_task.delay(job_data)
+        try:
+
+            # request.app.state.task_queue.put(job_data)
+            process_meeting_task.delay(job_data)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to Put the File in the Background Process: {e}")
+
         # Return the created meeting object to the frontend
         created_meeting['status'] = 'uploaded' # Ensure the returned object is up to date
         return {"meeting": created_meeting}
