@@ -92,11 +92,17 @@ export default function Login() {
       //   email: formData.email,
       //   password: formData.password
       // });
-      await login({
-        email: formData.email,
-        password: formData.password
-      });
+
+      // await login({
+      //   email: formData.email,
+      //   password: formData.password
+      // });
       
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: formData.email,
+        password: formData.password,
+      });
+
       // Display welcome toast
       const user = apiService.getCachedUserProfile();
       if (!user) throw new Error("User data not found after login");

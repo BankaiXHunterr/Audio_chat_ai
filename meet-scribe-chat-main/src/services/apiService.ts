@@ -161,7 +161,7 @@ interface ChatResponse {
  * Base URL and endpoints for all API calls
  */
 const API_CONFIG = {
-  BASE_URL: import.meta.env.VITE_API_BASE_URL ||  'http://localhost:7888',
+  BASE_URL: import.meta.env.VITE_API_BASE_URL ||  'https://audio-chat-ai.onrender.com',
 
   ENDPOINTS: {
     // Authentication endpoints
@@ -342,14 +342,24 @@ class ApiService {
     const headers: HeadersInit = { ...options.headers };
 
     // Add authorization header if the request requires it.
+    // if (requiresAuth) {
+    //   const token = await getAccessToken();
+
+    //   if (!token) {
+    //     headers['Authorization'] = `Bearer ${token}`;
+    //   } else {
+    //     // If auth is required but no token is found, we should fail early.
+    //     throw new Error("Authentication token not found. Please log in again.");
+    //   }
+    // }
+
     if (requiresAuth) {
       const token = await getAccessToken();
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      } else {
-        // If auth is required but no token is found, we should fail early.
+      if (!token) {
+        // This is the error you were seeing. It's a safeguard.
         throw new Error("Authentication token not found. Please log in again.");
       }
+      headers['Authorization'] = `Bearer ${token}`;
     }
 
     // CRITICAL FIX: Only set the 'Content-Type' header for non-FormData requests.
@@ -438,7 +448,6 @@ class ApiService {
     return responseData;
   }
 
-
   /**
    * Register a new user account
    * 
@@ -515,6 +524,7 @@ class ApiService {
   async logout(): Promise<void> {
     clearAuthData();
   }
+
   /**
    * Request password reset email
    * 
@@ -554,6 +564,7 @@ class ApiService {
    * @returns {Promise<{ message: string }>} Confirmation message
    * @throws {Error} On reset failure
    */
+
   async resetPassword(token: string, newPassword: string): Promise<{ message: string }> {
     return await this.makeRequest<{ message: string }>(
       API_CONFIG.ENDPOINTS.RESET_PASSWORD,
@@ -596,7 +607,6 @@ class ApiService {
     return profile;
   }
 
-
   
   /**
    * Update user profile information
@@ -618,6 +628,7 @@ class ApiService {
    * }
    * ```
    */
+
   async updateUserProfile(updates: Partial<UserProfile>): Promise<UserProfile> {
     const updatedProfile = await this.makeRequest<UserProfile>(
       API_CONFIG.ENDPOINTS.UPDATE_PROFILE,
@@ -651,6 +662,8 @@ class ApiService {
    * }
    * ```
    */
+
+
   async changePassword(currentPassword: string, newPassword: string): Promise<{ message: string }> {
     return await this.makeRequest<{ message: string }>(
       API_CONFIG.ENDPOINTS.CHANGE_PASSWORD,
@@ -677,6 +690,7 @@ class ApiService {
    * console.log('Email notifications:', settings.notifications.email);
    * ```
    */
+
   async getUserSettings(): Promise<UserSettings> {
     return await this.makeRequest<UserSettings>(
       API_CONFIG.ENDPOINTS.SETTINGS,
@@ -768,6 +782,8 @@ class ApiService {
    * }
    * ```
    */
+
+
   async getMeetingDetails(meetingId: string): Promise<Meeting> {
     const endpoint = API_CONFIG.ENDPOINTS.MEETING_DETAILS.replace(':id', meetingId);
     return await this.makeRequest<Meeting>(endpoint, { method: 'GET' });
@@ -804,7 +820,6 @@ class ApiService {
    * }
    * ```
    */
-
   // In your apiService.ts file
 
   async processMeeting(meetingData: CreateMeetingRequest): Promise<{ meeting: Meeting }> {
@@ -828,6 +843,7 @@ class ApiService {
     // highlight-end
   }
 
+
   /**
    * Delete a meeting and all associated data
    * 
@@ -845,6 +861,8 @@ class ApiService {
    * }
    * ```
    */
+
+
   async deleteMeeting(meetingId: string): Promise<void> {
     const endpoint = API_CONFIG.ENDPOINTS.DELETE_MEETING.replace(':id', meetingId);
     const result = await this.makeRequest<{ message: string }>(endpoint, { method: 'DELETE' });
@@ -860,6 +878,8 @@ class ApiService {
      * @throws {Error} On request failure
      */
   // highlight-start
+
+
   async askQuestion(meetingId: string, query: string): Promise<ChatResponse> {
     // The backend expects multipart/form-data, so we use FormData
     const formData = new FormData();
@@ -878,7 +898,6 @@ class ApiService {
   }
 
   // highlight-end
-
   // ========================================================================
   // FILE UPLOAD API METHODS
   // ========================================================================
