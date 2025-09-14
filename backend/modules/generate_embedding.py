@@ -3,7 +3,6 @@ import os
 from dotenv import load_dotenv
 import google.generativeai as genai
 from supabase import Client
-from sentence_transformers import SentenceTransformer
 import google.api_core.exceptions
 
 load_dotenv()
