@@ -1,0 +1,75 @@
+# render.yaml - Place this in the root of your GitHub repository
+
+services:
+  # 1. The Redis instance
+  - name: redis-broker
+    type: redis
+    plan: free
+
+  # 2. The FastAPI Web Service
+  - name: fastapi-web
+    type: web
+    env: python
+    plan: starter
+    # ADDED: This tells Render to run commands from the 'backend' folder
+    rootDir: ./backend 
+    repo: https://github.com/BankaiXHunterr/Audio_chat_ai
+    branch: main
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: redis-broker
+          property: internalUrl
+      - key: API_BASE_URL
+        fromService:
+          type: web
+          name: fastapi-web
+          property: url
+      # --- Secrets ---
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: GEMINI_API_KEYS
+        sync: false
+      - key: INTERNAL_API_KEY
+        sync: false
+
+  # 3. The Celery Background Worker
+  - name: celery-worker
+    type: worker
+    env: python
+    plan: starter
+    # ADDED: This also needs to run from the 'backend' folder
+    rootDir: ./backend 
+    repo: https://github.com/BankaiXHunterr/Audio_chat_ai
+    branch: main
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "celery -A celery_worker.celery_app worker --loglevel=info"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: redis-broker
+          property: internalUrl
+      - key: API_BASE_URL
+        fromService:
+          type: web
+          name: fastapi-web
+          property: url
+      # --- Secrets ---
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: GEMINI_API_KEYS
+        sync: false
+      - key: INTERNAL_API_KEY
+        sync: false
