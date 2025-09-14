@@ -39,78 +39,79 @@ from contextlib import asynccontextmanager
 # from pydub import AudioSegment
 import io
 import tempfile
-
+from celery_worker import celery_app, process_meeting_task
 
 
 TEMP_DIR = pathlib.Path("./temp_recordings").resolve()
 TEMP_DIR.mkdir(exist_ok=True)
 
-
+INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY")
 
 # --- Basic Setup ---
 load_dotenv()
 
 
 
-# --- Multiprocessing Worker Setup ---
-def worker_main_loop(task_queue: Queue, results_queue: Queue):
-    """The main loop for the worker process."""
-    print(f"✅ Worker process started (PID: {os.getpid()}).")
-    while True:
-        try:
-            job = task_queue.get()
-            process_meeting_job(job, results_queue)
-        except (KeyboardInterrupt, SystemExit):
-            break
-        except Exception as e:
-            print(f"Error in worker main loop: {e}")
+# # --- Multiprocessing Worker Setup ---
+# def worker_main_loop(task_queue: Queue, results_queue: Queue):
+#     """The main loop for the worker process."""
+#     print(f"✅ Worker process started (PID: {os.getpid()}).")
+#     while True:
+#         try:
+#             job = task_queue.get()
+#             process_meeting_job(job, results_queue)
+#         except (KeyboardInterrupt, SystemExit):
+#             break
+#         except Exception as e:
+#             print(f"Error in worker main loop: {e}")
 
-# --- Real-time Notification Listener ---
-async def listen_for_results(results_queue: Queue):
-    """Checks the results queue and sends socket notifications."""
-    print("🚀 Result listener started.")
-    while True:
-        if not results_queue.empty():
-            result = results_queue.get()
+# # --- Real-time Notification Listener ---
+# async def listen_for_results(results_queue: Queue):
+#     """Checks the results queue and sends socket notifications."""
+#     print("🚀 Result listener started.")
+#     while True:
+#         if not results_queue.empty():
+#             result = results_queue.get()
 
-            print(f"[listen_for_results][line-88] got following payload for websocket:{result}")
+#             print(f"[listen_for_results][line-88] got following payload for websocket:{result}")
 
-            await sio.emit(
-                'meeting_processing_complete',
-                {'meetingId': result['meetingId'], 'status': result['status']},
-                room=result['userId']
-            )
-        await asyncio.sleep(1)
+#             await sio.emit(
+#                 'meeting_processing_complete',
+#                 {'meetingId': result['meetingId'], 'status': result['status']},
+#                 room=result['userId']
+#             )
+#         await asyncio.sleep(1)
 
 
 
-# --- 3. FastAPI Lifespan Manager (Modern Replacement for on_event) ---
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # This code runs on startup
-    print("🚀 Application starting up...")
-    manager = Manager()
-    task_queue = manager.Queue()
-    results_queue = manager.Queue()
+# # --- 3. FastAPI Lifespan Manager (Modern Replacement for on_event) ---
+# @asynccontextmanager
+# async def lifespan(app: FastAPI):
+#     # This code runs on startup
+#     print("🚀 Application starting up...")
+#     manager = Manager()
+#     task_queue = manager.Queue()
+#     results_queue = manager.Queue()
     
-    app.state.task_queue = task_queue
+#     app.state.task_queue = task_queue
     
-    worker = Process(target=worker_main_loop, args=(task_queue, results_queue))
-    worker.daemon = True
-    worker.start()
-    app.state.worker_process = worker
+#     worker = Process(target=worker_main_loop, args=(task_queue, results_queue))
+#     worker.daemon = True
+#     worker.start()
+#     app.state.worker_process = worker
     
-    asyncio.create_task(listen_for_results(results_queue))
+#     asyncio.create_task(listen_for_results(results_queue))
     
-    yield # The application is now running
+#     yield # The application is now running
     
-    # This code runs on shutdown
-    print("👋 Application shutting down...")
-    app.state.worker_process.terminate()
-    app.state.worker_process.join()
+#     # This code runs on shutdown
+#     print("👋 Application shutting down...")
+#     app.state.worker_process.terminate()
+#     app.state.worker_process.join()
 
 
-app = FastAPI(lifespan=lifespan)
+# app = FastAPI(lifespan=lifespan)
+app = FastAPI()
 app.mount("/socket.io", socket_app)
 # --- ADD THIS CORS MIDDLEWARE CONFIGURATION ---
 origins = [
@@ -484,17 +485,11 @@ async def process_meeting(
     file_path = f"{user_id}/{meeting_id}{file_extension}"
     contents = await recording.read()
 
-    temp_file_path = TEMP_DIR/f"{meeting_id}{file_extension}"
-
-    with open(temp_file_path,'wb') as f:
-        f.write(contents)
-
-    print(f"✅ File saved temporarily to: {temp_file_path}")  
     try:
         print(f"Attempting to upload file to: {file_path}")
         supabase.storage.from_("recordings").upload(
             path=file_path,
-            file=str(temp_file_path),
+            file=contents,
             file_options={"content-type": recording.content_type}
         )
         
@@ -515,12 +510,11 @@ async def process_meeting(
             "meeting_id": meeting_id,
             "user_id": user_id,
             "recording_content_type": recording.content_type,
-            "temp_file_path": str(temp_file_path),
             "recording_url": recording_url,
         }
 
-        request.app.state.task_queue.put(job_data)
-        
+        # request.app.state.task_queue.put(job_data)
+        process_meeting_task.delay(job_data)
         # Return the created meeting object to the frontend
         created_meeting['status'] = 'uploaded' # Ensure the returned object is up to date
         return {"meeting": created_meeting}
@@ -528,11 +522,9 @@ async def process_meeting(
     except Exception as e:
         # --- 4b. On FAILED upload ---
         print(f"❌ Failed to upload file to storage: {e}")
-        
         # Update the meeting record with 'failed' status
         supabase.table("meetings").update({"status": "failed"}).eq("id", meeting_id).execute()
-        
-        # Return a server error to the frontend
+        # Return a erver error to the frontend
         raise HTTPException(status_code=500, detail=f"File upload failed: {e}")
 
 
@@ -634,6 +626,21 @@ async def delete_meeting(
         print(f"An error occurred while deleting meeting {str_meeting_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete meeting.")
 
+
+
+@app.post("/internal/notify")
+async def send_notification(notification: Notification, request: Request):
+    # Secure this endpoint
+    auth_header = request.headers.get('Authorization')
+    if auth_header != f"Bearer {INTERNAL_API_KEY}":
+        raise HTTPException(status_code=403, detail="Forbidden")
+        
+    await sio.emit(
+        'meeting_processing_complete',
+        {'meetingId': notification.meetingId, 'status': notification.status},
+        room=notification.userId
+    )
+    return {"message": "Notification sent"}
 
 
 if __name__ == "__main__":
