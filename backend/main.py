@@ -473,7 +473,7 @@ async def process_meeting(
 
     # --- 3. Attempt to upload the file to Supabase Storage ---
     file_path = f"{user_id}/{meeting_id}{file_extension}"
-    # contents = await recording.read()
+    contents = await recording.read()
     
 
     # audio_bytes = io.BytesIO(contents)
@@ -483,7 +483,7 @@ async def process_meeting(
         print(f"Attempting to upload file to: {file_path}")
         supabase.storage.from_("recordings").upload(
             path=file_path,
-            file=recording.file,
+            file=contents,
             file_options={"content-type": recording.content_type}
         )
         
@@ -503,7 +503,7 @@ async def process_meeting(
         job_data = {
             "meeting_id": meeting_id,
             "user_id": user_id,
-            # "recording_contents": contents,
+            "recording_contents": contents,
             "recording_content_type": recording.content_type,
             "file_extension": file_extension, 
             "recording_url": recording_url,
