@@ -5,6 +5,10 @@ import time
 import requests
 from pathlib import Path    
 
+class ApiKeyException(Exception):
+    """Custom exception for API key-related failures (e.g., expired, invalid)."""
+    pass
+
 
 class FileUploader:
     def __init__(self, upload_url, api_key):
@@ -62,8 +66,22 @@ class FileUploader:
             return file_uri, response_mime_type
 
         except requests.exceptions.HTTPError as e:
+            # print(f"HTTP Error during file upload: {e.response.status_code} - {e.response.text}")
+            # return None, None
+            try:
+                error_details = e.response.json()
+                reason = error_details.get("error", {}).get("details", [{}])[0].get("reason")
+                if reason == "API_KEY_INVALID":
+                    # Raise our custom exception to be caught by the Celery loop
+                    raise ApiKeyException(f"API key is invalid or expired: {e.response.text}")
+            except (ValueError, KeyError, IndexError):
+                # If parsing fails, just log the original error
+                pass
+            
+            # For all other HTTP errors, log and return None
             print(f"HTTP Error during file upload: {e.response.status_code} - {e.response.text}")
             return None, None
+            # --- END MODIFICATION ---
         except requests.exceptions.RequestException as e:
             print(f"An error occurred during file upload: {e}")
             return None, None

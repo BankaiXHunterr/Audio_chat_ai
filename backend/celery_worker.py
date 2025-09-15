@@ -8,6 +8,7 @@ from supabase import create_client, Client
 import google.api_core.exceptions
 from modules.utility.transcript_generator import analyze_audio_with_gemini_tools
 import mimetypes
+from modules.utility.upload_file_to_gemini import ApiKeyException
 load_dotenv()
 
 # --- Configuration ---
@@ -35,6 +36,7 @@ def notify_frontend(userId, meetingId, status):
     try:
         api_url = os.getenv("API_BASE_URL") # e.g., https://audio-chat-ai.onrender.com
         internal_key = os.getenv("INTERNAL_API_KEY")
+        print(f'Internal_API:{internal_key}')
         if not api_url or not internal_key:
             print("🔴 ERROR: API_BASE_URL or INTERNAL_API_KEY not set. Cannot send notification.")
             return
@@ -107,18 +109,22 @@ def process_meeting_task(self, job: dict):
 
         for key in api_keys:
             try:
-                print(f"🤖 Attempting analysis for meeting {meeting_id}...")
+                print(f"🤖 Attempting analysis for meeting {meeting_id}... with Key:{key[-4:]}")
                 asyncio.run(analyze_audio_with_gemini_tools(
                     supabase=supabase,
                     meeting_id=meeting_id,
                     audio_content=recording_contents,
-                    content_type=recording_content_type,
+                    content_type=recording_content_type, 
                     api_key=key
                 ))
                 analysis_successful = True
                 print(f"✅ Analysis successful for meeting {meeting_id}!")
                 break
-            except (google.api_core.exceptions.PermissionDenied, google.api_core.exceptions.ResourceExhausted) as e:
+            except (google.api_core.exceptions.PermissionDenied,
+                    google.api_core.exceptions.ResourceExhausted,
+                    ApiKeyException,
+                    requests.exceptions.HTTPError) as e:
+                
                 print(f"API key failed. Trying next key. Reason: {type(e).__name__}")
                 last_error = e
                 continue

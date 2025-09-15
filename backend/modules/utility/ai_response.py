@@ -19,6 +19,11 @@ async def get_rag_response(
     Performs a full RAG pipeline with retry logic for Gemini API calls,
     and stores the conversation in the database.
     """
+
+    # --- 1. Create query embedding with RETRY LOGIC ---
+    query_embedding_result = None
+    last_error_embedding = None
+
     # --- PREPARATION: Load API Keys ---
     api_keys_str = os.getenv("GEMINI_API_KEYS", "")
     if not api_keys_str:
@@ -37,9 +42,7 @@ async def get_rag_response(
         # Don't fail the entire process if saving fails, but log the error
         print(f"Failed to save user message to chat history: {e}")
 
-    # --- 1. Create query embedding with RETRY LOGIC ---
-    query_embedding_result = None
-    last_error_embedding = None
+
 
     for key in api_keys:
         try:
@@ -52,13 +55,17 @@ async def get_rag_response(
             )
             print(f"Embedding created successfully with key ending in '...{key[-4:]}'.")
             break
-        except (google.api_core.exceptions.PermissionDenied, google.api_core.exceptions.ResourceExhausted) as e:
+        except (google.api_core.exceptions.PermissionDenied,
+                google.api_core.exceptions.ResourceExhausted,
+                google.api_core.exceptions.InvalidArgument) as e:
+            
             print(f"API key ending in '...{key[-4:]}' failed for embedding. Reason: {type(e).__name__}. Trying next key...")
             last_error_embedding = e
             continue
     
     if query_embedding_result is None:
         raise Exception(f"All API keys failed for embedding. Last error: {last_error_embedding}") from last_error_embedding
+
 
     query_embedding = query_embedding_result['embedding']
 
@@ -112,7 +119,11 @@ async def get_rag_response(
             ai_response = await model.generate_content_async(prompt)
             print(f"Response generated successfully with key ending in '...{key[-4:]}'.")
             break
-        except (google.api_core.exceptions.PermissionDenied, google.api_core.exceptions.ResourceExhausted) as e:
+        
+        except (google.api_core.exceptions.PermissionDenied,
+                google.api_core.exceptions.ResourceExhausted,
+                google.api_core.exceptions.InvalidArgument) as e:
+            
             print(f"API key ending in '...{key[-4:]}' failed for generation. Reason: {type(e).__name__}. Trying next key...")
             last_error_generation = e
             continue

@@ -5,25 +5,38 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated
 from modules.utility.transcript_generator import analyze_audio_with_gemini_tools
 import google.generativeai as genai
+
 import bcrypt
 import postgrest.exceptions
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, status, Form, File, UploadFile, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
+from pydantic import BaseModel, EmailStr
 from supabase import Client, create_client
 import json
+from gotrue.errors import AuthApiError # Add this import
+from fastapi import BackgroundTasks # Add this import
 from modules.utility.generate_embedding import create_and_store_embeddings_manually
 from modules.utility.ai_response import get_rag_response
 from fastapi.middleware.cors import CORSMiddleware 
+from pydantic import BaseModel
+from typing import List, Optional
 from modules.utility.utility import enrich_participants
 import time
 from modules.utility.socket_manager import sio, socket_app
+import socketio
 import google.api_core.exceptions
 from modules.utility.pydantic_model import *
+from multiprocessing import Process, Manager, Queue
+import asyncio
 import pathlib
 from multiprocessing import Process, Manager
 from typing import Annotated
+from contextlib import asynccontextmanager
+# from pydub import AudioSegment
+import io
+import tempfile
 from celery_worker import celery_app, process_meeting_task
 
 
@@ -508,6 +521,7 @@ async def chat_with_gemini(
 
         resp = await get_rag_response(supabase, meeting_id, message)
         return {"response": resp}
+
 
 
 # highlight-start

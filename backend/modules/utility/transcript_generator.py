@@ -25,6 +25,87 @@ api_endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_
 
 
 
+# async def analyze_audio_with_gemini_tools(
+#     supabase: Client,
+#     meeting_id: str,
+#     audio_content: bytes,
+#     content_type: str,
+#     api_key: str
+# ):
+#     """
+#     Analyzes audio content using your FileUploader class.
+#     """
+
+#     try:
+
+#         # --- Step 1: Upload the file using your class ---
+#         uploader = FileUploader(GEMINI_FILE_UPLOAD_API_URL, api_key)
+        
+#         file_uri, mime_type = uploader.upload_raw_bytes(
+#             file_content=audio_content,
+#             mime_type=content_type,
+#             display_name=f"meeting_recording_{meeting_id}"
+#         )
+        
+#         print(f"File uploaded: {file_uri} (MIME type: {mime_type})")
+        
+#         if not file_uri:
+#             raise Exception("File upload failed using FileUploader.")
+
+#         # --- Step 2: Wait for the file to be active ---
+#         if not check_file_status(file_uri, api_key):
+#             raise Exception("File did not become active for processing.")
+            
+#         # --- Step 3: Call Gemini's generateContent API ---
+
+#         gemini_payload = {
+#             "contents": [{
+#                 "role": "user",
+#                 "parts": [
+#                     {"fileData": {"fileUri": file_uri, "mimeType": mime_type}},
+#                     {"text": dirization_prompt}
+#                 ]
+#             }],
+#             "tools": [{"function_declarations": [dirization_tool]}],
+#             "tool_config": {"function_calling_config": {"mode": "ANY"}}
+#         }
+
+
+#         header = {
+#             "x-goog-api-key": api_key,
+#             "Content-Type": "application/json"
+#         }
+
+#         response = requests.post(api_endpoint, headers=header, json=gemini_payload)
+#         response.raise_for_status()  # Raise an error for HTTP errors
+
+#         # --- Step 4: Parse the response and save to database ---
+#         response_dict = response.json()
+#         function_args = response_dict["candidates"][0]["content"]["parts"][0]["functionCall"]["args"]
+
+#         meeting_details_data = {
+#             "id": meeting_id,
+#             "transcript": function_args.get("transcript"),
+#             "summary": function_args.get("summary"),
+#             "key_highlights": function_args.get("keyHighlights"),
+#             "actionable_items": function_args.get("actionItems")
+#         }
+
+#         # print(meeting_details_data)
+
+#         supabase.table("meeting_details").insert(meeting_details_data).execute()
+        
+#         # # --- Step 5: Update the original meeting's status ---
+#         supabase.table("meetings").update({"status": "completed"}).eq("id", meeting_id).execute()
+#         print(f"Successfully analyzed and saved details for meeting {meeting_id}")
+
+#     except Exception as e:
+#         print(f"Error during background analysis for meeting {meeting_id}: {e}")
+#         supabase.table("meetings").update({"status": "failed"}).eq("id", meeting_id).execute()
+
+
+
+
 async def analyze_audio_with_gemini_tools(
     supabase: Client,
     meeting_id: str,
@@ -36,69 +117,69 @@ async def analyze_audio_with_gemini_tools(
     Analyzes audio content using your FileUploader class.
     """
 
-    try:
+    # try:
 
-        # --- Step 1: Upload the file using your class ---
-        uploader = FileUploader(GEMINI_FILE_UPLOAD_API_URL, api_key)
+    # --- Step 1: Upload the file using your class ---
+    uploader = FileUploader(GEMINI_FILE_UPLOAD_API_URL, api_key)
+    
+    file_uri, mime_type = uploader.upload_raw_bytes(
+        file_content=audio_content,
+        mime_type=content_type,
+        display_name=f"meeting_recording_{meeting_id}"
+    )
+    
+    print(f"File uploaded: {file_uri} (MIME type: {mime_type})")
+    
+    if not file_uri:
+        raise Exception("File upload failed using FileUploader.")
 
-        file_uri, mime_type = uploader.upload_raw_bytes(
-            file_content=audio_content,
-            mime_type=content_type,
-            display_name=f"meeting_recording_{meeting_id}"
-        )
+    # --- Step 2: Wait for the file to be active ---
+    if not check_file_status(file_uri, api_key):
+        raise Exception("File did not become active for processing.")
         
-        print(f"File uploaded: {file_uri} (MIME type: {mime_type})")
-        
-        if not file_uri:
-            raise Exception("File upload failed using FileUploader.")
+    # --- Step 3: Call Gemini's generateContent API ---
 
-        # --- Step 2: Wait for the file to be active ---
-        if not check_file_status(file_uri, api_key):
-            raise Exception("File did not become active for processing.")
-            
-        # --- Step 3: Call Gemini's generateContent API ---
-
-        gemini_payload = {
-            "contents": [{
-                "role": "user",
-                "parts": [
-                    {"fileData": {"fileUri": file_uri, "mimeType": mime_type}},
-                    {"text": dirization_prompt}
-                ]
-            }],
-            "tools": [{"function_declarations": [dirization_tool]}],
-            "tool_config": {"function_calling_config": {"mode": "ANY"}}
-        }
+    gemini_payload = {
+        "contents": [{
+            "role": "user",
+            "parts": [
+                {"fileData": {"fileUri": file_uri, "mimeType": mime_type}},
+                {"text": dirization_prompt}
+            ]
+        }],
+        "tools": [{"function_declarations": [dirization_tool]}],
+        "tool_config": {"function_calling_config": {"mode": "ANY"}}
+    }
 
 
-        header = {
-            "x-goog-api-key": api_key,
-            "Content-Type": "application/json"
-        }
+    header = {
+        "x-goog-api-key": api_key,
+        "Content-Type": "application/json"
+    }
 
-        response = requests.post(api_endpoint, headers=header, json=gemini_payload)
-        response.raise_for_status()  # Raise an error for HTTP errors
+    response = requests.post(api_endpoint, headers=header, json=gemini_payload)
+    response.raise_for_status()  # Raise an error for HTTP errors
 
-        # --- Step 4: Parse the response and save to database ---
-        response_dict = response.json()
-        function_args = response_dict["candidates"][0]["content"]["parts"][0]["functionCall"]["args"]
+    # --- Step 4: Parse the response and save to database ---
+    response_dict = response.json()
+    function_args = response_dict["candidates"][0]["content"]["parts"][0]["functionCall"]["args"]
 
-        meeting_details_data = {
-            "id": meeting_id,
-            "transcript": function_args.get("transcript"),
-            "summary": function_args.get("summary"),
-            "key_highlights": function_args.get("keyHighlights"),
-            "actionable_items": function_args.get("actionItems")
-        }
+    meeting_details_data = {
+        "id": meeting_id,
+        "transcript": function_args.get("transcript"),
+        "summary": function_args.get("summary"),
+        "key_highlights": function_args.get("keyHighlights"),
+        "actionable_items": function_args.get("actionItems")
+    }
 
-        # print(meeting_details_data)
+    # print(meeting_details_data)
 
-        supabase.table("meeting_details").insert(meeting_details_data).execute()
-        
-        # # --- Step 5: Update the original meeting's status ---
-        supabase.table("meetings").update({"status": "completed"}).eq("id", meeting_id).execute()
-        print(f"Successfully analyzed and saved details for meeting {meeting_id}")
+    supabase.table("meeting_details").insert(meeting_details_data).execute()
+    
+    # # --- Step 5: Update the original meeting's status ---
+    supabase.table("meetings").update({"status": "completed"}).eq("id", meeting_id).execute()
+    print(f"Successfully analyzed and saved details for meeting {meeting_id}")
 
-    except Exception as e:
-        print(f"Error during background analysis for meeting {meeting_id}: {e}")
-        supabase.table("meetings").update({"status": "failed"}).eq("id", meeting_id).execute()
+    # except Exception as e:
+    #     print(f"Error during background analysis for meeting {meeting_id}: {e}")
+    #     supabase.table("meetings").update({"status": "failed"}).eq("id", meeting_id).execute()
