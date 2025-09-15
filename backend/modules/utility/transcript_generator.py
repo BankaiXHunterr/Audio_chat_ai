@@ -46,6 +46,7 @@ async def analyze_audio_with_gemini_tools(
             mime_type=content_type,
             display_name=f"meeting_recording_{meeting_id}"
         )
+        
         print(f"File uploaded: {file_uri} (MIME type: {mime_type})")
         
         if not file_uri:

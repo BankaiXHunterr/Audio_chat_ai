@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from supabase import create_client, Client
 import google.api_core.exceptions
 from modules.utility.transcript_generator import analyze_audio_with_gemini_tools
-
+import mimetypes
 load_dotenv()
 
 # --- Configuration ---
@@ -49,6 +49,8 @@ def notify_frontend(userId, meetingId, status):
         print(f"✅ Notification sent for meeting {meetingId} with status '{status}'.")
     except requests.exceptions.RequestException as e:
         print(f"🔴 FAILED to send notification for meeting {meetingId}: {e}")
+
+
 
 @celery_app.task(name='process_meeting_task', bind=True, max_retries=3)
 def process_meeting_task(self, job: dict):
@@ -93,9 +95,11 @@ def process_meeting_task(self, job: dict):
         with open(temp_file_path, 'rb') as f:
             recording_contents = f.read()
 
+
+        recording_content_type,_ = mimetypes.guess_file_type(temp_file_path)
         supabase.table("meetings").update({"status": "processing"}).eq("id", meeting_id).execute()
 
-        api_keys_str = os.getenv("GEMINI_API_KEYS", "")
+        api_keys_str = os.getenv("GEMINI_API_KEYS")
         api_keys = [key.strip() for key in api_keys_str.split(',')]
         
         analysis_successful = False

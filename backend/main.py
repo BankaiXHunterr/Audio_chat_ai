@@ -17,14 +17,14 @@ from supabase import Client, create_client
 import json
 from gotrue.errors import AuthApiError # Add this import
 from fastapi import BackgroundTasks # Add this import
-from modules.generate_embedding import create_and_store_embeddings_manually
-from modules.ai_response import get_rag_response
+from backend.modules.utility.generate_embedding import create_and_store_embeddings_manually
+from backend.modules.utility.ai_response import get_rag_response
 from fastapi.middleware.cors import CORSMiddleware 
 from pydantic import BaseModel
 from typing import List, Optional
 from modules.utility.utility import enrich_participants
 import time
-from modules.socket_manager import sio, socket_app
+from backend.modules.utility.socket_manager import sio, socket_app
 import socketio
 import google.api_core.exceptions
 from modules.utility.pydantic_model import *
@@ -49,64 +49,6 @@ INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY")
 # --- Basic Setup ---
 load_dotenv()
 
-
-
-# # --- Multiprocessing Worker Setup ---
-# def worker_main_loop(task_queue: Queue, results_queue: Queue):
-#     """The main loop for the worker process."""
-#     print(f"✅ Worker process started (PID: {os.getpid()}).")
-#     while True:
-#         try:
-#             job = task_queue.get()
-#             process_meeting_job(job, results_queue)
-#         except (KeyboardInterrupt, SystemExit):
-#             break
-#         except Exception as e:
-#             print(f"Error in worker main loop: {e}")
-
-# # --- Real-time Notification Listener ---
-# async def listen_for_results(results_queue: Queue):
-#     """Checks the results queue and sends socket notifications."""
-#     print("🚀 Result listener started.")
-#     while True:
-#         if not results_queue.empty():
-#             result = results_queue.get()
-
-#             print(f"[listen_for_results][line-88] got following payload for websocket:{result}")
-
-#             await sio.emit(
-#                 'meeting_processing_complete',
-#                 {'meetingId': result['meetingId'], 'status': result['status']},
-#                 room=result['userId']
-#             )
-#         await asyncio.sleep(1)
-
-
-
-# # --- 3. FastAPI Lifespan Manager (Modern Replacement for on_event) ---
-# @asynccontextmanager
-# async def lifespan(app: FastAPI):
-#     # This code runs on startup
-#     print("🚀 Application starting up...")
-#     manager = Manager()
-#     task_queue = manager.Queue()
-#     results_queue = manager.Queue()
-    
-#     app.state.task_queue = task_queue
-    
-#     worker = Process(target=worker_main_loop, args=(task_queue, results_queue))
-#     worker.daemon = True
-#     worker.start()
-#     app.state.worker_process = worker
-    
-#     asyncio.create_task(listen_for_results(results_queue))
-    
-#     yield # The application is now running
-    
-#     # This code runs on shutdown
-#     print("👋 Application shutting down...")
-#     app.state.worker_process.terminate()
-#     app.state.worker_process.join()
 
 
 # app = FastAPI(lifespan=lifespan)

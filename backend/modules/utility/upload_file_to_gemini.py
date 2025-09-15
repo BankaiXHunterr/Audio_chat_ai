@@ -67,3 +67,39 @@ class FileUploader:
         except requests.exceptions.RequestException as e:
             print(f"An error occurred during file upload: {e}")
             return None, None
+        
+
+    def check_file_status(self,file_uri, max_retries=10, wait_time=5):
+        status_url = file_uri  # The file URI can be used to check its status
+        headers = {
+            "x-goog-api-key": self.api_key
+        }
+
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(status_url, headers=headers)  # Set verify=True in production
+                response.raise_for_status()  # Raise an error for bad responses
+
+                file_info = response.json()
+                state = file_info.get('state')
+                print(f"Current file state: {state}")
+
+                if state == 'ACTIVE':
+                    return True
+                elif state in ['FAILED', 'EXPIRED']:
+                    print(f"File processing failed or expired: {state}")
+                    return False
+
+            except requests.exceptions.HTTPError as http_err:
+                print(f"HTTP error occurred: {http_err}")  # Log HTTP errors
+            except requests.exceptions.RequestException as req_err:
+                print(f"Request error occurred: {req_err}")  # Log other request errors
+            except Exception as e:
+                print(f"An unexpected error occurred: {e}")  # Log unexpected errors
+
+            # Wait before checking again
+            print(f"Retrying in {wait_time} seconds... (Attempt {attempt + 1}/{max_retries})")
+            time.sleep(wait_time)
+
+        print("Max retries reached. File status could not be determined.")
+        return False
