@@ -5,7 +5,7 @@ import time
 import google.generativeai as genai
 from supabase import Client
 import os
-from backend.modules.utility.gemini_file_api_uploader import FileUploader
+from modules.utility.gemini_file_api_uploader import FileUploader
 from dotenv import load_dotenv
 load_dotenv()
 

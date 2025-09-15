@@ -24,6 +24,7 @@ async def create_and_store_embeddings_manually(supabase: Client, meeting_id: str
     Chunks a transcript, creates embeddings with API key rotation,
     stores them, and updates the meeting status.
     """
+    
     # Load all API keys from the .env file
     api_keys_str = os.getenv("GEMINI_API_KEYS", "")
     if not api_keys_str:
