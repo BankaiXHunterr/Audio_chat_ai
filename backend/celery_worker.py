@@ -27,7 +27,7 @@ celery_app.conf.update(
     task_track_started=True,
 )
 
-
+GEMINI_API_KEYS = os.getenv("GEMINI_API_KEYS", "").split(',')
 
 
 # --- Helper function for notifications ---
@@ -98,16 +98,16 @@ def process_meeting_task(self, job: dict):
             recording_contents = f.read()
 
 
-        recording_content_type,_ = mimetypes.guess_file_type(temp_file_path)
+        # recording_content_type,_ = mimetypes.guess_file_type(temp_file_path)
         supabase.table("meetings").update({"status": "processing"}).eq("id", meeting_id).execute()
 
-        api_keys_str = os.getenv("GEMINI_API_KEYS")
-        api_keys = [key.strip() for key in api_keys_str.split(',')]
+        # api_keys_str = os.getenv("GEMINI_API_KEYS")
+        # api_keys = [key.strip() for key in api_keys_str.split(',')]
         
         analysis_successful = False
         last_error = None
 
-        for key in api_keys:
+        for key in GEMINI_API_KEYS:
             try:
                 print(f"🤖 Attempting analysis for meeting {meeting_id}... with Key:{key[-4:]}")
                 asyncio.run(analyze_audio_with_gemini_tools(
