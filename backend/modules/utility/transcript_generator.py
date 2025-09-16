@@ -74,64 +74,86 @@ async def analyze_audio_with_gemini_tools(
         "x-goog-api-key": api_key,
         "Content-Type": "application/json"
     }
+    while True:
+        try:
+            response = requests.post(api_endpoint, headers=header, json=gemini_payload)
+            response.raise_for_status()  # Raise an error for HTTP errors
 
-    try:
-        response = requests.post(api_endpoint, headers=header, json=gemini_payload)
-        response.raise_for_status()  # Raise an error for HTTP errors
+            # --- Step 4: Parse the response and save to database ---
 
-        # --- Step 4: Parse the response and save to database ---
-        response_dict = response.json()
 
-        if "candidates" not in response_dict or not response_dict["candidates"]:
-            # If not, the API likely returned an error or an empty response.
-            # We log the entire response to see what went wrong.
-            print("🔴 ERROR: 'candidates' key not found in Gemini response.")
-            print("Full API Response:", json.dumps(response_dict, indent=2))
-            raise ValueError("Invalid response structure from Gemini API.")
+            # If we get here, the request was successful (status 2xx)
+            print("✅ Gemini analysis request successful.")
+            break # Exit the loop
+
+        except requests.exceptions.HTTPError as e:
+            # --- THIS IS THE NEW LOGIC ---
+            if e.response.status_code == 503:
+                print("🚦 Model is overloaded (503). Waiting for 60 seconds before retrying...")
+                time.sleep(60)
+                continue # Retry the request
+            else:
+                # For any other HTTP error (like 400, 401), re-raise the exception
+                # so the Celery worker can handle it (e.g., by trying the next key).
+                print(f"🔴 A non-retriable HTTP error occurred: {e.response.status_code}")
+                raise e
+        except requests.exceptions.RequestException as e:
+             print(f"🔴 A network-related error occurred: {e}")
+             raise e
         
-        # Safely access nested keys
-        first_candidate = response_dict["candidates"][0]
-        
-        if "content" not in first_candidate or "parts" not in first_candidate["content"]:
-            print("🔴 ERROR: 'content' or 'parts' not in the first candidate.")
-            print("Full API Response:", json.dumps(response_dict, indent=2))
-            raise ValueError("Unexpected response format from Gemini: missing content parts.")
+
+    response_dict = response.json()
+
+    if "candidates" not in response_dict or not response_dict["candidates"]:
+        # If not, the API likely returned an error or an empty response.
+        # We log the entire response to see what went wrong.
+        print("🔴 ERROR: 'candidates' key not found in Gemini response.")
+        print("Full API Response:", json.dumps(response_dict, indent=2))
+        raise ValueError("Invalid response structure from Gemini API.")
+    
+    # Safely access nested keys
+    first_candidate = response_dict["candidates"][0]
+    
+    if "content" not in first_candidate or "parts" not in first_candidate["content"]:
+        print("🔴 ERROR: 'content' or 'parts' not in the first candidate.")
+        print("Full API Response:", json.dumps(response_dict, indent=2))
+        raise ValueError("Unexpected response format from Gemini: missing content parts.")
 
 
-        # Extract the function call arguments
-        function_call = first_candidate["content"]["parts"][0].get("functionCall")
-        if not function_call or "args" not in function_call:
-            print("🔴 ERROR: 'functionCall' or 'args' not found in the response part.")
-            print("Full API Response:", json.dumps(response_dict, indent=2))
-            raise ValueError("Gemini response did not contain a function call.")
+    # Extract the function call arguments
+    function_call = first_candidate["content"]["parts"][0].get("functionCall")
+    if not function_call or "args" not in function_call:
+        print("🔴 ERROR: 'functionCall' or 'args' not found in the response part.")
+        print("Full API Response:", json.dumps(response_dict, indent=2))
+        raise ValueError("Gemini response did not contain a function call.")
 
-        function_args = function_call["args"]
+    function_args = function_call["args"]
 
-        meeting_details_data = {
-            "id": meeting_id,
-            "transcript": function_args.get("transcript"),
-            "summary": function_args.get("summary"),
-            "key_highlights": function_args.get("keyHighlights"),
-            "actionable_items": function_args.get("actionItems")
-        }
+    meeting_details_data = {
+        "id": meeting_id,
+        "transcript": function_args.get("transcript"),
+        "summary": function_args.get("summary"),
+        "key_highlights": function_args.get("keyHighlights"),
+        "actionable_items": function_args.get("actionItems")
+    }
 
-        # print(meeting_details_data)
+    # print(meeting_details_data)
 
-        supabase.table("meeting_details").insert(meeting_details_data).execute()
-        
-        # # --- Step 5: Update the original meeting's status ---
-        supabase.table("meetings").update({"status": "completed"}).eq("id", meeting_id).execute()
-        print(f"✅ Successfully analyzed and saved details for meeting {meeting_id}")
-        # except Exception as e:
-        #     print(f"Error during background analysis for meeting {meeting_id}: {e}")
-        #     supabase.table("meetings").update({"status": "failed"}).eq("id", meeting_id).execute()
+    supabase.table("meeting_details").insert(meeting_details_data).execute()
+    
+    # # --- Step 5: Update the original meeting's status ---
+    supabase.table("meetings").update({"status": "completed"}).eq("id", meeting_id).execute()
+    print(f"✅ Successfully analyzed and saved details for meeting {meeting_id}")
+    # except Exception as e:
+    # #     print(f"Error during background analysis for meeting {meeting_id}: {e}")
+    # #     supabase.table("meetings").update({"status": "failed"}).eq("id", meeting_id).execute()
 
 
-    except requests.exceptions.HTTPError as http_err:
-        # This will catch HTTP errors (like 400, 500) and print the response body.
-        print(f"🔴 HTTP Error during Gemini analysis: {http_err}")
-        print("Error Response:", http_err.response.text)
-        raise # Re-raise the exception to be caught by the Celery worker
-    except Exception as e:
-        print(f"🔴 An unexpected error occurred during analysis: {e}")
-        raise
+    # except requests.exceptions.HTTPError as http_err:
+    #     # This will catch HTTP errors (like 400, 500) and print the response body.
+    #     print(f"🔴 HTTP Error during Gemini analysis: {http_err}")
+    #     print("Error Response:", http_err.response.text)
+    #     raise # Re-raise the exception to be caught by the Celery worker
+    # except Exception as e:
+    #     print(f"🔴 An unexpected error occurred during analysis: {e}")
+    #     raise

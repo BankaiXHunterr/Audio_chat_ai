@@ -101,9 +101,6 @@ def process_meeting_task(self, job: dict):
         # recording_content_type,_ = mimetypes.guess_file_type(temp_file_path)
         supabase.table("meetings").update({"status": "processing"}).eq("id", meeting_id).execute()
 
-        # api_keys_str = os.getenv("GEMINI_API_KEYS")
-        # api_keys = [key.strip() for key in api_keys_str.split(',')]
-        
         analysis_successful = False
         last_error = None
 
